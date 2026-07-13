@@ -18,22 +18,60 @@ actor TerminalTabSource: SwitchItemSource {
         return cache
     }
 
-    static func activate(windowID: Int, tabIndex: Int) {
+    // tty-first: a tab's tty is stable for its lifetime, while cached
+    // window/index pairs go stale as tabs open/close/reorder. `activate`
+    // runs LAST so Terminal doesn't front the wrong window first.
+    @discardableResult
+    static func activate(tty: String?, windowID: Int, tabIndex: Int) -> Bool {
+        let logger = Logger(subsystem: "com.mattmilliken.switchboard", category: "TerminalTabSource")
+        let ttyLookup = (tty?.isEmpty == false ? tty : nil).map { """
+            repeat with w in windows
+                try
+                    repeat with t in tabs of w
+                        if tty of t is "\($0)" then
+                            set selected tab of w to t
+                            set index of w to 1
+                            activate
+                            return "ok:tty"
+                        end if
+                    end repeat
+                end try
+            end repeat
+        """ } ?? ""
+
         let script = """
         tell application "Terminal"
-            activate
+        \(ttyLookup)
             repeat with w in windows
                 if id of w is \(windowID) then
+                    if \(tabIndex) is not greater than (count of tabs of w) then
+                        set selected tab of w to tab \(tabIndex) of w
+                    end if
                     set index of w to 1
-                    set selected tab of w to tab \(tabIndex) of w
-                    exit repeat
+                    activate
+                    return "ok:index-fallback"
                 end if
             end repeat
+            return "not-found"
         end tell
         """
 
         var err: NSDictionary?
-        NSAppleScript(source: script)?.executeAndReturnError(&err)
+        let result = NSAppleScript(source: script)?.executeAndReturnError(&err)
+        if let err {
+            logger.error("Terminal activation failed: \(String(describing: err), privacy: .public)")
+            return false
+        }
+        switch result?.stringValue {
+        case "ok:tty":
+            return true
+        case "ok:index-fallback":
+            logger.info("Terminal tty lookup missed; fell back to cached window/index")
+            return true
+        default:
+            logger.error("Terminal activation could not find tab or window: \(result?.stringValue ?? "nil", privacy: .public)")
+            return false
+        }
     }
 
     static func requestAutomationPermission() {
@@ -108,7 +146,7 @@ actor TerminalTabSource: SwitchItemSource {
                 let displayTitle = titleParts.isEmpty ? "Terminal Tab" : titleParts.joined(separator: " — ")
 
                 return SwitchItem(
-                    id: "tab:terminal:\(windowID):\(tabIndex)",
+                    id: "tab:terminal:\(windowID):\(tabIndex):\(tty)",
                     kind: .browserTab,
                     appName: "Terminal",
                     appBundleID: "com.apple.Terminal",

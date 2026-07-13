@@ -26,23 +26,31 @@ struct WindowActivator {
     private func activateBrowserTab(_ item: SwitchItem) {
         let parts = item.id.split(separator: ":")
         guard parts.count >= 4,
-              let windowID = Int(parts[2]) else {
+              let windowID = Int(parts[2]),
+              let tabIndex = Int(parts[3]) else {
             return
         }
 
+        let activated: Bool
         switch String(parts[1]) {
         case "chrome":
-            guard let tabIndex = Int(parts[3]) else { return }
             let tabID = parts.count >= 5 ? Int(parts[4]) : nil
-            ChromeTabSource.activate(windowID: windowID, tabIndex: tabIndex, tabID: tabID)
+            activated = ChromeTabSource.activate(
+                tabID: tabID, windowID: windowID, tabIndex: tabIndex, tabTitle: item.title
+            )
         case "safari":
-            guard let tabID = Int(parts[3]) else { return }
-            SafariTabSource.activate(windowID: windowID, tabIndex: tabID)
+            activated = SafariTabSource.activate(windowID: windowID, tabIndex: tabIndex)
         case "terminal":
-            guard let tabID = Int(parts[3]) else { return }
-            TerminalTabSource.activate(windowID: windowID, tabIndex: tabID)
+            let tty = parts.count >= 5 ? String(parts[4]) : nil
+            activated = TerminalTabSource.activate(tty: tty, windowID: windowID, tabIndex: tabIndex)
         default:
             return
+        }
+
+        if !activated {
+            // Palette is already closed; a beep is the honest cheap signal
+            // that the tab is gone rather than silently doing nothing.
+            NSSound.beep()
         }
     }
 }

@@ -19,42 +19,89 @@ actor ChromeTabSource: SwitchItemSource {
 
     // MARK: Activation
 
-    static func activate(windowID: Int, tabIndex: Int, tabID: Int?) {
+    // Tab-id-first: cached indexes go stale within seconds when tabs are
+    // opened/closed/reordered, and a stale index usually still resolves —
+    // silently selecting the wrong tab. Tab ids are stable for the session
+    // (even across window drags), so resolve the id live and derive the
+    // index at activation time. `activate` runs LAST: running it first
+    // fronts whichever Chrome window was already on top.
+    @discardableResult
+    static func activate(tabID: Int?, windowID: Int, tabIndex: Int, tabTitle: String) -> Bool {
+        let idLookup = tabID.map { """
+            repeat with w in windows
+                try
+                    repeat with t in tabs of w
+                        if id of t is \($0) then
+                            set active tab index of w to (index of t)
+                            set index of w to 1
+                            activate
+                            return "ok:id:" & (id of w)
+                        end if
+                    end repeat
+                end try
+            end repeat
+        """ } ?? ""
+
         let script = """
         tell application "Google Chrome"
-            activate
+        \(idLookup)
             repeat with w in windows
                 if id of w is \(windowID) then
-                    set index of w to 1
-                    try
+                    if \(tabIndex) is not greater than (count of tabs of w) then
                         set active tab index of w to \(tabIndex)
-                        return "ok:index"
-                    on error
-                    end try
-        \(tabID.map { """
-                    try
-                        repeat with t in tabs of w
-                            if id of t is \($0) then
-                                set active tab index of w to (index of t)
-                                return "ok:id"
-                            end if
-                        end repeat
-                    on error
-                    end try
-        """ } ?? "")
-                    return "window-found-tab-missing"
+                    end if
+                    set index of w to 1
+                    activate
+                    return "ok:index-fallback"
                 end if
             end repeat
-            return "window-missing"
+            return "not-found"
         end tell
         """
+
         var err: NSDictionary?
         let result = NSAppleScript(source: script)?.executeAndReturnError(&err)
         if let err {
             logger.error("Chrome activation failed: \(String(describing: err), privacy: .public)")
+            return false
+        }
+
+        let marker = result?.stringValue ?? "nil"
+        switch marker {
+        case let m where m.hasPrefix("ok:id"):
+            logger.debug("Chrome activation result: \(marker, privacy: .public)")
+        case "ok:index-fallback":
+            logger.info("Chrome tab id lookup missed; fell back to cached window/index")
+        default:
+            logger.error("Chrome activation could not find tab or window: \(marker, privacy: .public)")
+            return false
+        }
+
+        // `set index of w to 1` often fails to actually raise the window in
+        // Chrome; finish the job over AX (permission we already hold).
+        raiseWindowViaAX(bundleID: "com.google.Chrome", titlePrefix: tabTitle)
+        return true
+    }
+
+    private static func raiseWindowViaAX(bundleID: String, titlePrefix: String) {
+        guard let app = NSWorkspace.shared.runningApplications
+            .first(where: { $0.bundleIdentifier == bundleID }) else { return }
+        defer { app.activate(options: []) }
+
+        guard !titlePrefix.isEmpty else { return }
+        let axApp = AXUIElementCreateApplication(app.processIdentifier)
+        var value: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(axApp, kAXWindowsAttribute as CFString, &value) == .success,
+              let windows = value as? [AXUIElement] else { return }
+
+        for window in windows {
+            var titleRef: CFTypeRef?
+            guard AXUIElementCopyAttributeValue(window, kAXTitleAttribute as CFString, &titleRef) == .success,
+                  let title = titleRef as? String,
+                  title.hasPrefix(titlePrefix) else { continue }
+            AXUIElementPerformAction(window, kAXRaiseAction as CFString)
             return
         }
-        logger.debug("Chrome activation result: \(result?.stringValue ?? "nil", privacy: .public)")
     }
 
     // MARK: Startup permission warm-up

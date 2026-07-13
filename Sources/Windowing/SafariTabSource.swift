@@ -18,22 +18,39 @@ actor SafariTabSource: SwitchItemSource {
         return cache
     }
 
-    static func activate(windowID: Int, tabIndex: Int) {
+    // Select the tab before raising, and `activate` LAST — activating first
+    // fronts whichever Safari window was already on top. Bounds-check the
+    // cached index so a stale snapshot can't throw mid-script.
+    @discardableResult
+    static func activate(windowID: Int, tabIndex: Int) -> Bool {
+        let logger = Logger(subsystem: "com.mattmilliken.switchboard", category: "SafariTabSource")
         let script = """
         tell application "Safari"
-            activate
             repeat with w in windows
                 if id of w is \(windowID) then
+                    if \(tabIndex) is not greater than (count of tabs of w) then
+                        set current tab of w to tab \(tabIndex) of w
+                    end if
                     set index of w to 1
-                    set current tab of w to tab \(tabIndex) of w
-                    exit repeat
+                    activate
+                    return "ok"
                 end if
             end repeat
+            return "not-found"
         end tell
         """
 
         var err: NSDictionary?
-        NSAppleScript(source: script)?.executeAndReturnError(&err)
+        let result = NSAppleScript(source: script)?.executeAndReturnError(&err)
+        if let err {
+            logger.error("Safari activation failed: \(String(describing: err), privacy: .public)")
+            return false
+        }
+        guard result?.stringValue == "ok" else {
+            logger.error("Safari activation could not find window \(windowID)")
+            return false
+        }
+        return true
     }
 
     static func requestAutomationPermission() {
