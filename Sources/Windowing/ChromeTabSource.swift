@@ -178,9 +178,11 @@ actor ChromeTabSource: SwitchItemSource {
                     icon: icon,
                     pid: nil,
                     axWindow: nil,
-                    recencyKey: "tab:chrome:\(tid)"
+                    recencyKey: "tab:chrome:\(tid)",
+                    subtitle: URL(string: url)?.host
                 )
             }
+        Self.logger.debug("Loaded \(self.cache.count) Chrome tabs")
         lastFetch = Date()
     }
 

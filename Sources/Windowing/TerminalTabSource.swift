@@ -162,7 +162,8 @@ actor TerminalTabSource: SwitchItemSource {
                     icon: icon,
                     pid: nil,
                     axWindow: nil,
-                    recencyKey: tty.isEmpty ? nil : "tab:terminal:\(tty)"
+                    recencyKey: tty.isEmpty ? nil : "tab:terminal:\(tty)",
+                    subtitle: tty.isEmpty ? nil : tty
                 )
             }
         logger.debug("Loaded \(self.cache.count) Terminal tabs")

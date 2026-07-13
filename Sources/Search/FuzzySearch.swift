@@ -76,7 +76,7 @@ private struct SearchCandidate {
 
     init(item: SwitchItem) {
         let bundleID = FuzzySearch.normalize(item.appBundleID ?? "")
-        let fullText = FuzzySearch.normalize("\(item.appName) \(item.title) \(bundleID)")
+        let fullText = FuzzySearch.normalize("\(item.appName) \(item.title) \(item.subtitle ?? "") \(bundleID)")
 
         self.fullText = fullText
         self.bundleID = bundleID

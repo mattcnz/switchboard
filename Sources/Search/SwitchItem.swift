@@ -16,6 +16,9 @@ struct SwitchItem: Identifiable, Hashable, @unchecked Sendable {
     // Stable across relaunches and tab reorders, unlike `id` (which carries
     // volatile pids/CFHashes/tab indexes). Used for recency ranking.
     let recencyKey: String
+    // Secondary display/search text: URL host for browser tabs, tty for
+    // Terminal tabs.
+    let subtitle: String?
 
     init(
         id: String,
@@ -26,7 +29,8 @@ struct SwitchItem: Identifiable, Hashable, @unchecked Sendable {
         icon: NSImage?,
         pid: pid_t?,
         axWindow: AXUIElement?,
-        recencyKey: String? = nil
+        recencyKey: String? = nil,
+        subtitle: String? = nil
     ) {
         self.id = id
         self.kind = kind
@@ -37,6 +41,7 @@ struct SwitchItem: Identifiable, Hashable, @unchecked Sendable {
         self.pid = pid
         self.axWindow = axWindow
         self.recencyKey = recencyKey ?? id
+        self.subtitle = subtitle
     }
 
     static func == (lhs: SwitchItem, rhs: SwitchItem) -> Bool { lhs.id == rhs.id }
