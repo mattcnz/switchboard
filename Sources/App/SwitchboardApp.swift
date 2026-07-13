@@ -36,6 +36,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 }
 
+enum BuildInfo {
+    static let version =
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "?"
+
+    // Executable mtime — can't go stale the way a hardcoded string could.
+    static let builtAt: Date? = {
+        guard let url = Bundle.main.executableURL,
+              let attrs = try? FileManager.default.attributesOfItem(atPath: url.path) else {
+            return nil
+        }
+        return attrs[.modificationDate] as? Date
+    }()
+
+    static var builtAtDescription: String {
+        guard let builtAt else { return "unknown" }
+        return builtAt.formatted(date: .abbreviated, time: .shortened)
+    }
+}
+
 @MainActor
 final class AppSettings: ObservableObject {
     static let shared = AppSettings()
@@ -194,6 +213,21 @@ struct AppSettingsView: View {
                     Button("Request Terminal Access") {
                         TerminalTabSource.requestAutomationPermission()
                     }
+                }
+            }
+
+            Section("About") {
+                HStack {
+                    Text("Version")
+                    Spacer()
+                    Text(BuildInfo.version)
+                        .foregroundColor(.secondary)
+                }
+                HStack {
+                    Text("Built")
+                    Spacer()
+                    Text(BuildInfo.builtAtDescription)
+                        .foregroundColor(.secondary)
                 }
             }
         }

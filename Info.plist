@@ -24,8 +24,6 @@
 	<true/>
 	<key>NSAccessibilityUsageDescription</key>
 	<string>Switchboard needs Accessibility access to list and switch between your open windows.</string>
-	<key>NSAppleEventsUsageDescription</key>
-	<string>Switchboard needs Automation access to read and switch browser tabs and Terminal tabs.</string>
 	<key>NSHumanReadableCopyright</key>
 	<string>Copyright © 2026 Matt Milliken. All rights reserved.</string>
 	<key>NSPrincipalClass</key>

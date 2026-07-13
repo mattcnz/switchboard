@@ -1,8 +1,10 @@
 import AppKit
 import SwiftUI
+import OSLog
 
 @MainActor
 final class AppCoordinator {
+    private let logger = Logger(subsystem: "com.mattmilliken.switchboard", category: "AppCoordinator")
     private let permissionManager = AccessibilityPermissionManager.shared
     private let settings = AppSettings.shared
     private let windowScanner = WindowScanner()
@@ -15,6 +17,7 @@ final class AppCoordinator {
     private var onboardingWindow: NSWindow?
 
     func start() {
+        logger.info("Switchboard starting, binary built \(BuildInfo.builtAtDescription, privacy: .public)")
         if permissionManager.isTrusted {
             setupHotkey()
         } else {
