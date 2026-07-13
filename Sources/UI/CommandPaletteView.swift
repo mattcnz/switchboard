@@ -108,19 +108,30 @@ final class PaletteViewModel: ObservableObject {
 
     func loadItems() async {
         allItems = []
-        var seenIDs = Set<String>()
+        var itemsBySource: [Int: [SwitchItem]] = [:]
 
-        // Run all sources concurrently; update the list as each one finishes
-        // so local windows appear immediately while slower sources still load.
-        await withTaskGroup(of: [SwitchItem].self) { group in
-            for source in sources {
-                group.addTask { await source.snapshot() }
-            }
-            for await items in group {
-                let newItems = items.filter { seenIDs.insert($0.id).inserted }
-                guard !newItems.isEmpty else { continue }
-                allItems.append(contentsOf: newItems)
-                logger.debug("loaded \(newItems.count) new items, total=\(self.allItems.count)")
+        func rebuildAllItems() {
+            var seenIDs = Set<String>()
+            allItems = sources.indices
+                .flatMap { itemsBySource[$0] ?? [] }
+                .filter { seenIDs.insert($0.id).inserted }
+        }
+
+        // Phase 1: cached snapshots render instantly. Phase 2: fresh data
+        // replaces each source's slice as it lands, so stale entries never
+        // outlive one palette open.
+        for phase in [true, false] {
+            await withTaskGroup(of: (Int, [SwitchItem]).self) { group in
+                for (index, source) in sources.enumerated() {
+                    group.addTask {
+                        (index, phase ? await source.snapshot() : await source.freshSnapshot())
+                    }
+                }
+                for await (index, items) in group {
+                    itemsBySource[index] = items
+                    rebuildAllItems()
+                    logger.debug("source \(index) \(phase ? "cached" : "fresh"): \(items.count) items, total=\(self.allItems.count)")
+                }
             }
         }
     }

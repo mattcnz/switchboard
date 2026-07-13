@@ -18,6 +18,14 @@ actor SafariTabSource: SwitchItemSource {
         return cache
     }
 
+    func freshSnapshot() async -> [SwitchItem] {
+        guard isSafariRunning else { return [] }
+        // Skip when snapshot() just fetched (cold cache) — nothing to refresh.
+        if Date().timeIntervalSince(lastFetch) < 1 { return cache }
+        await fetchAndCache()
+        return cache
+    }
+
     // Select the tab before raising, and `activate` LAST — activating first
     // fronts whichever Safari window was already on top. Bounds-check the
     // cached index so a stale snapshot can't throw mid-script.

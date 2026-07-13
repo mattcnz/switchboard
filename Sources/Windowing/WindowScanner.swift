@@ -1,7 +1,14 @@
 import AppKit
 
 protocol SwitchItemSource {
+    // Fast path — may serve a cached snapshot so the palette renders instantly.
     func snapshot() async -> [SwitchItem]
+    // Force a refetch from the live source.
+    func freshSnapshot() async -> [SwitchItem]
+}
+
+extension SwitchItemSource {
+    func freshSnapshot() async -> [SwitchItem] { await snapshot() }
 }
 
 actor ComposedSource: SwitchItemSource {

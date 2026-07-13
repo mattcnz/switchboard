@@ -17,6 +17,14 @@ actor ChromeTabSource: SwitchItemSource {
         return cache
     }
 
+    func freshSnapshot() async -> [SwitchItem] {
+        guard isChromeRunning else { return [] }
+        // Skip when snapshot() just fetched (cold cache) — nothing to refresh.
+        if Date().timeIntervalSince(lastFetch) < 1 { return cache }
+        await fetchAndCache()
+        return cache
+    }
+
     // MARK: Activation
 
     // Tab-id-first: cached indexes go stale within seconds when tabs are

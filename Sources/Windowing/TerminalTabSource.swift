@@ -18,6 +18,14 @@ actor TerminalTabSource: SwitchItemSource {
         return cache
     }
 
+    func freshSnapshot() async -> [SwitchItem] {
+        guard isTerminalRunning else { return [] }
+        // Skip when snapshot() just fetched (cold cache) — nothing to refresh.
+        if Date().timeIntervalSince(lastFetch) < 1 { return cache }
+        await fetchAndCache()
+        return cache
+    }
+
     // tty-first: a tab's tty is stable for its lifetime, while cached
     // window/index pairs go stale as tabs open/close/reorder. `activate`
     // runs LAST so Terminal doesn't front the wrong window first.
