@@ -35,7 +35,7 @@ actor SafariTabSource: SwitchItemSource {
         let script = """
         tell application "Safari"
             repeat with w in windows
-                if id of w is \(windowID) then
+                if (id of w as text) is "\(windowID)" then
                     if \(tabIndex) is not greater than (count of tabs of w) then
                         set current tab of w to tab \(tabIndex) of w
                     end if

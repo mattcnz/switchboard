@@ -35,15 +35,23 @@ actor ChromeTabSource: SwitchItemSource {
     // fronts whichever Chrome window was already on top.
     @discardableResult
     static func activate(tabID: Int?, windowID: Int, tabIndex: Int, tabTitle: String) -> Bool {
+        // Two AppleScript landmines here: Chrome returns ids as TEXT, so a
+        // bare `id of t is 123` (text vs integer) never matches; and
+        // `index of t` on a loop reference errors outright. Fetch each
+        // window's id list in one event and derive the index positionally.
         let idLookup = tabID.map { """
             repeat with w in windows
                 try
-                    repeat with t in tabs of w
-                        if id of t is \($0) then
-                            set active tab index of w to (index of t)
+                    set idList to id of every tab of w
+                    repeat with i from 1 to count of idList
+                        if ((item i of idList) as text) is "\($0)" then
+                            -- capture before reordering: `w` is positional and
+                            -- re-resolves to a different window after set index
+                            set matchedWindowID to (id of w as text)
+                            set active tab index of w to i
                             set index of w to 1
                             activate
-                            return "ok:id:" & (id of w)
+                            return "ok:id:" & matchedWindowID
                         end if
                     end repeat
                 end try
@@ -54,7 +62,7 @@ actor ChromeTabSource: SwitchItemSource {
         tell application "Google Chrome"
         \(idLookup)
             repeat with w in windows
-                if id of w is \(windowID) then
+                if (id of w as text) is "\(windowID)" then
                     if \(tabIndex) is not greater than (count of tabs of w) then
                         set active tab index of w to \(tabIndex)
                     end if

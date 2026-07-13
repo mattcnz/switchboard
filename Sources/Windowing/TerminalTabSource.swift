@@ -32,12 +32,15 @@ actor TerminalTabSource: SwitchItemSource {
     @discardableResult
     static func activate(tty: String?, windowID: Int, tabIndex: Int) -> Bool {
         let logger = Logger(subsystem: "com.mattmilliken.switchboard", category: "TerminalTabSource")
+        // Fetch each window's tty list in one event and address the tab by
+        // position — property access on loop references errors in some apps.
         let ttyLookup = (tty?.isEmpty == false ? tty : nil).map { """
             repeat with w in windows
                 try
-                    repeat with t in tabs of w
-                        if tty of t is "\($0)" then
-                            set selected tab of w to t
+                    set ttyList to tty of every tab of w
+                    repeat with i from 1 to count of ttyList
+                        if ((item i of ttyList) as text) is "\($0)" then
+                            set selected tab of w to tab i of w
                             set index of w to 1
                             activate
                             return "ok:tty"
@@ -51,7 +54,7 @@ actor TerminalTabSource: SwitchItemSource {
         tell application "Terminal"
         \(ttyLookup)
             repeat with w in windows
-                if id of w is \(windowID) then
+                if (id of w as text) is "\(windowID)" then
                     if \(tabIndex) is not greater than (count of tabs of w) then
                         set selected tab of w to tab \(tabIndex) of w
                     end if
