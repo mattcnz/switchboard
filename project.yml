@@ -1,0 +1,42 @@
+name: Switchboard
+options:
+  bundleIdPrefix: com.mattmilliken
+  deploymentTarget:
+    macOS: '14.0'
+
+packages:
+  KeyboardShortcuts:
+    url: https://github.com/sindresorhus/KeyboardShortcuts
+    from: 2.2.0
+
+targets:
+  Switchboard:
+    type: application
+    platform: macOS
+    sources:
+      - Sources
+    info:
+      path: Info.plist
+      properties:
+        LSUIElement: true
+        NSPrincipalClass: NSApplication
+        CFBundleDisplayName: Switchboard
+        CFBundleName: Switchboard
+        CFBundleIdentifier: com.mattmilliken.switchboard
+        CFBundleVersion: '1'
+        CFBundleShortVersionString: '0.1'
+        NSAccessibilityUsageDescription: Switchboard needs Accessibility access to list and switch between your open windows.
+        NSHumanReadableCopyright: Copyright © 2026 Matt Milliken. All rights reserved.
+    entitlements:
+      path: Switchboard.entitlements
+      properties:
+        com.apple.security.app-sandbox: false
+    dependencies:
+      - package: KeyboardShortcuts
+    settings:
+      base:
+        SWIFT_VERSION: '5.0'
+        MACOSX_DEPLOYMENT_TARGET: '14.0'
+        CODE_SIGNING_REQUIRED: 'NO'
+        CODE_SIGN_IDENTITY: ''
+        PRODUCT_BUNDLE_IDENTIFIER: com.mattmilliken.switchboard
