@@ -1,4 +1,5 @@
 import AppKit
+import OSLog
 
 protocol SwitchItemSource {
     // Fast path — may serve a cached snapshot so the palette renders instantly.
@@ -25,51 +26,88 @@ actor ComposedSource: SwitchItemSource {
 }
 
 actor WindowScanner: SwitchItemSource {
-    func snapshot() async -> [SwitchItem] {
-        var items: [SwitchItem] = []
+    private static let logger = Logger(subsystem: "com.mattmilliken.switchboard", category: "WindowScanner")
+    private var lastSnapshot: [SwitchItem] = []
+    private var lastScan: Date = .distantPast
 
+    init() {
+        // Process-global AX message timeout: without it a hung app blocks
+        // the default 6s per attribute read, stalling the whole scan.
+        AXUIElementSetMessagingTimeout(AXUIElementCreateSystemWide(), 1.0)
+    }
+
+    func snapshot() async -> [SwitchItem] {
+        if !lastSnapshot.isEmpty { return lastSnapshot }
+        return await freshSnapshot()
+    }
+
+    func freshSnapshot() async -> [SwitchItem] {
+        // Skip when snapshot() just scanned (cold cache) — nothing to refresh.
+        if Date().timeIntervalSince(lastScan) < 1 { return lastSnapshot }
+
+        let start = Date()
         let apps = NSWorkspace.shared.runningApplications.filter {
             $0.activationPolicy == .regular
         }
 
-        for app in apps {
-            let pid = app.processIdentifier
-            let axApp = AXUIElementCreateApplication(pid)
-            let windows = windows(for: axApp)
-            guard !windows.isEmpty else { continue }
-
-            let icon = app.icon
-            let appName = app.localizedName ?? "Unknown"
-            let bundleID = app.bundleIdentifier
-
-            for window in windows {
-                var titleRef: CFTypeRef?
-                guard AXUIElementCopyAttributeValue(window, kAXTitleAttribute as CFString, &titleRef) == .success,
-                      let title = titleRef as? String,
-                      !title.isEmpty else { continue }
-
-                var minimizedRef: CFTypeRef?
-                if AXUIElementCopyAttributeValue(window, kAXMinimizedAttribute as CFString, &minimizedRef) == .success,
-                   (minimizedRef as? Bool) == true { continue }
-
-                let id = "win:\(pid):\(CFHash(window))"
-                items.append(SwitchItem(
-                    id: id,
-                    kind: .window,
-                    appName: appName,
-                    appBundleID: bundleID,
-                    title: title,
-                    icon: icon,
-                    pid: pid,
-                    axWindow: window
-                ))
+        var itemsByApp: [pid_t: [SwitchItem]] = [:]
+        await withTaskGroup(of: (pid_t, [SwitchItem]).self) { group in
+            for app in apps {
+                group.addTask { (app.processIdentifier, Self.scanApp(app)) }
+            }
+            for await (pid, items) in group {
+                itemsByApp[pid] = items
             }
         }
+        // Deterministic order (task completion order isn't).
+        let items = apps.flatMap { itemsByApp[$0.processIdentifier] ?? [] }
 
+        lastSnapshot = items
+        lastScan = Date()
+        let ms = Int(Date().timeIntervalSince(start) * 1000)
+        Self.logger.debug("scanned \(apps.count) apps, \(items.count) windows in \(ms)ms")
         return items
     }
 
-    private func windows(for app: AXUIElement) -> [AXUIElement] {
+    private nonisolated static func scanApp(_ app: NSRunningApplication) -> [SwitchItem] {
+        let pid = app.processIdentifier
+        let axApp = AXUIElementCreateApplication(pid)
+        let windows = windows(for: axApp)
+        guard !windows.isEmpty else { return [] }
+
+        let icon = app.icon
+        let appName = app.localizedName ?? "Unknown"
+        let bundleID = app.bundleIdentifier
+
+        var items: [SwitchItem] = []
+        for window in windows {
+            var titleRef: CFTypeRef?
+            _ = AXUIElementCopyAttributeValue(window, kAXTitleAttribute as CFString, &titleRef)
+            // Empty titles happen on Electron apps whose AX tree populates
+            // lazily — fall back to the app name rather than hiding the window.
+            let axTitle = (titleRef as? String) ?? ""
+            let title = axTitle.isEmpty ? appName : axTitle
+
+            var minimizedRef: CFTypeRef?
+            if AXUIElementCopyAttributeValue(window, kAXMinimizedAttribute as CFString, &minimizedRef) == .success,
+               (minimizedRef as? Bool) == true { continue }
+
+            let id = "win:\(pid):\(CFHash(window))"
+            items.append(SwitchItem(
+                id: id,
+                kind: .window,
+                appName: appName,
+                appBundleID: bundleID,
+                title: title,
+                icon: icon,
+                pid: pid,
+                axWindow: window
+            ))
+        }
+        return items
+    }
+
+    private nonisolated static func windows(for app: AXUIElement) -> [AXUIElement] {
         var seen = Set<CFHashCode>()
         var result: [AXUIElement] = []
 
@@ -96,7 +134,7 @@ actor WindowScanner: SwitchItemSource {
         return result
     }
 
-    private func copyWindows(from app: AXUIElement, attribute: CFString) -> [AXUIElement]? {
+    private nonisolated static func copyWindows(from app: AXUIElement, attribute: CFString) -> [AXUIElement]? {
         var value: CFTypeRef?
         guard AXUIElementCopyAttributeValue(app, attribute, &value) == .success else {
             return nil
@@ -104,7 +142,7 @@ actor WindowScanner: SwitchItemSource {
         return value as? [AXUIElement]
     }
 
-    private func copyWindow(from app: AXUIElement, attribute: CFString) -> AXUIElement? {
+    private nonisolated static func copyWindow(from app: AXUIElement, attribute: CFString) -> AXUIElement? {
         var value: CFTypeRef?
         guard AXUIElementCopyAttributeValue(app, attribute, &value) == .success else {
             return nil
