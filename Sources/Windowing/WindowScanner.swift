@@ -101,7 +101,8 @@ actor WindowScanner: SwitchItemSource {
                 title: title,
                 icon: icon,
                 pid: pid,
-                axWindow: window
+                axWindow: window,
+                recencyKey: "win:\(bundleID ?? appName):\(title)"
             ))
         }
         return items

@@ -129,7 +129,8 @@ actor SafariTabSource: SwitchItemSource {
                     title: displayTitle,
                     icon: icon,
                     pid: nil,
-                    axWindow: nil
+                    axWindow: nil,
+                    recencyKey: "tab:safari:\(displayTitle)"
                 )
             }
         logger.debug("Loaded \(self.cache.count) Safari tabs")

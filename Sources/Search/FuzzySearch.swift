@@ -57,8 +57,8 @@ enum FuzzySearch {
                     return lhs.score > rhs.score
                 }
 
-                let lhsLastActivated = RecentsStore.lastActivatedAt(for: lhs.item.id) ?? 0
-                let rhsLastActivated = RecentsStore.lastActivatedAt(for: rhs.item.id) ?? 0
+                let lhsLastActivated = RecentsStore.lastActivatedAt(for: lhs.item.recencyKey) ?? 0
+                let rhsLastActivated = RecentsStore.lastActivatedAt(for: rhs.item.recencyKey) ?? 0
                 if lhsLastActivated != rhsLastActivated {
                     return lhsLastActivated > rhsLastActivated
                 }

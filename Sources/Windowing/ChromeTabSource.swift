@@ -177,7 +177,8 @@ actor ChromeTabSource: SwitchItemSource {
                     title: display,
                     icon: icon,
                     pid: nil,
-                    axWindow: nil
+                    axWindow: nil,
+                    recencyKey: "tab:chrome:\(tid)"
                 )
             }
         lastFetch = Date()

@@ -3,7 +3,7 @@ import AppKit
 @MainActor
 struct WindowActivator {
     func activate(_ item: SwitchItem) {
-        RecentsStore.markActivated(item.id)
+        RecentsStore.markActivated(item.recencyKey)
 
         switch item.kind {
         case .window:

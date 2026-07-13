@@ -13,6 +13,31 @@ struct SwitchItem: Identifiable, Hashable, @unchecked Sendable {
     let icon: NSImage?
     let pid: pid_t?
     let axWindow: AXUIElement?
+    // Stable across relaunches and tab reorders, unlike `id` (which carries
+    // volatile pids/CFHashes/tab indexes). Used for recency ranking.
+    let recencyKey: String
+
+    init(
+        id: String,
+        kind: SwitchItemKind,
+        appName: String,
+        appBundleID: String?,
+        title: String,
+        icon: NSImage?,
+        pid: pid_t?,
+        axWindow: AXUIElement?,
+        recencyKey: String? = nil
+    ) {
+        self.id = id
+        self.kind = kind
+        self.appName = appName
+        self.appBundleID = appBundleID
+        self.title = title
+        self.icon = icon
+        self.pid = pid
+        self.axWindow = axWindow
+        self.recencyKey = recencyKey ?? id
+    }
 
     static func == (lhs: SwitchItem, rhs: SwitchItem) -> Bool { lhs.id == rhs.id }
     func hash(into hasher: inout Hasher) { hasher.combine(id) }
