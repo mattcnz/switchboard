@@ -18,6 +18,11 @@ struct OnboardingView: View {
                     .foregroundColor(.secondary)
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: 340)
+                Text("This window closes by itself once access is granted. Switchboard lives in the menu bar (⊞).")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: 340)
             }
 
             HStack(spacing: 12) {
