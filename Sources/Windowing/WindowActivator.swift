@@ -17,10 +17,16 @@ struct WindowActivator {
 
     private func activateWindow(_ item: SwitchItem) {
         guard let pid = item.pid else { return }
-        NSRunningApplication(processIdentifier: pid)?.activate(options: [])
         if let window = item.axWindow {
+            // Restore from the Dock first — raising a minimized window is a no-op.
+            var minimizedRef: CFTypeRef?
+            if AXUIElementCopyAttributeValue(window, kAXMinimizedAttribute as CFString, &minimizedRef) == .success,
+               (minimizedRef as? Bool) == true {
+                AXUIElementSetAttributeValue(window, kAXMinimizedAttribute as CFString, kCFBooleanFalse)
+            }
             AXUIElementPerformAction(window, kAXRaiseAction as CFString)
         }
+        NSRunningApplication(processIdentifier: pid)?.activate(options: [])
     }
 
     private func activateBrowserTab(_ item: SwitchItem) {

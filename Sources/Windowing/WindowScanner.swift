@@ -88,9 +88,12 @@ actor WindowScanner: SwitchItemSource {
             let axTitle = (titleRef as? String) ?? ""
             let title = axTitle.isEmpty ? appName : axTitle
 
+            // Minimized windows stay searchable — WindowActivator restores
+            // them on selection. Skipping them made Dock-minimized windows
+            // unfindable, which reads as "search is broken".
             var minimizedRef: CFTypeRef?
-            if AXUIElementCopyAttributeValue(window, kAXMinimizedAttribute as CFString, &minimizedRef) == .success,
-               (minimizedRef as? Bool) == true { continue }
+            let isMinimized = AXUIElementCopyAttributeValue(window, kAXMinimizedAttribute as CFString, &minimizedRef) == .success
+                && (minimizedRef as? Bool) == true
 
             let id = "win:\(pid):\(CFHash(window))"
             items.append(SwitchItem(
@@ -102,7 +105,8 @@ actor WindowScanner: SwitchItemSource {
                 icon: icon,
                 pid: pid,
                 axWindow: window,
-                recencyKey: "win:\(bundleID ?? appName):\(title)"
+                recencyKey: "win:\(bundleID ?? appName):\(title)",
+                subtitle: isMinimized ? "Minimized" : nil
             ))
         }
         return items
