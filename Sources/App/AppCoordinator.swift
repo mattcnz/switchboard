@@ -137,6 +137,9 @@ final class AppCoordinator: NSObject {
     // MARK: Hotkey + sources
 
     private func setupHotkey() {
+        // Needs AX trust, which is guaranteed on this path.
+        FocusTracker.shared.start()
+
         // Trigger "Switchboard wants to control Google Chrome" dialog now,
         // clearly at startup, rather than buried inside a search later.
         if settings.includeChromeTabs {

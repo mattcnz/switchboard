@@ -148,11 +148,21 @@ final class PaletteViewModel: ObservableObject {
 
     func activateSelected() {
         guard selectedIndex < filteredItems.count else { return }
-        onActivate(filteredItems[selectedIndex])
+        let item = filteredItems[selectedIndex]
+        let normalizedQuery = FuzzySearch.normalize(query.trimmingCharacters(in: .whitespacesAndNewlines))
+        if !normalizedQuery.isEmpty {
+            RecentsStore.recordQueryChoice(query: normalizedQuery, key: item.recencyKey)
+        }
+        onActivate(item)
     }
 
     private func updateFiltered() {
-        filteredItems = FuzzySearch.rank(allItems, query: query)
+        filteredItems = FuzzySearch.rank(
+            allItems,
+            query: query,
+            mruRanks: FocusTracker.shared.mruRanks(),
+            currentWindowID: FocusTracker.shared.currentWindowID
+        )
         selectedIndex = 0
         logger.debug("filtered query='\(self.query, privacy: .public)' all=\(self.allItems.count) matches=\(self.filteredItems.count)")
     }
