@@ -11,10 +11,19 @@ final class FloatingPanelController {
     private var panel: FloatingPanel?
     private let sourceProvider: () -> [any SwitchItemSource]
     private let activator: WindowActivator
+    private let thumbnailProvider: WindowThumbnailProvider
+    private let previewsRequested: () -> Bool
 
-    init(sourceProvider: @escaping () -> [any SwitchItemSource], activator: WindowActivator) {
+    init(
+        sourceProvider: @escaping () -> [any SwitchItemSource],
+        activator: WindowActivator,
+        thumbnailProvider: WindowThumbnailProvider,
+        previewsRequested: @escaping () -> Bool
+    ) {
         self.sourceProvider = sourceProvider
         self.activator = activator
+        self.thumbnailProvider = thumbnailProvider
+        self.previewsRequested = previewsRequested
     }
 
     func toggle() {
@@ -26,17 +35,30 @@ final class FloatingPanelController {
     }
 
     private func show() {
+        // Warm the window list before the first cell asks for a thumbnail.
+        let provider = thumbnailProvider
+        Task { await provider.beginSession() }
+
         let viewModel = PaletteViewModel(sources: sourceProvider()) { [weak self] item in
             self?.activate(item)
         }
 
         let contentView = CommandPaletteView(
             viewModel: viewModel,
+            screenPermission: .shared,
+            previewsRequested: previewsRequested(),
+            thumbnailProvider: thumbnailProvider,
             onDismiss: { [weak self] in self?.hide() }
         )
 
+        let screen = targetScreen()
+        let visible = screen.visibleFrame
         let panel = FloatingPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 640, height: 420),
+            contentRect: NSRect(
+                x: 0, y: 0,
+                width: min(900, visible.width - 80),
+                height: min(600, visible.height - 120)
+            ),
             styleMask: [.nonactivatingPanel, .fullSizeContentView],
             backing: .buffered,
             defer: false
@@ -78,6 +100,8 @@ final class FloatingPanelController {
     func hide() {
         panel?.close()
         panel = nil
+        let provider = thumbnailProvider
+        Task { await provider.endSession() }
     }
 
     private func activate(_ item: SwitchItem) {
@@ -85,12 +109,14 @@ final class FloatingPanelController {
         activator.activate(item)
     }
 
-    private func centerPanel(_ panel: NSPanel) {
-        let screen = NSScreen.screens.first(where: {
+    private func targetScreen() -> NSScreen {
+        NSScreen.screens.first(where: {
             $0.frame.contains(NSEvent.mouseLocation)
         }) ?? NSScreen.main ?? NSScreen.screens[0]
+    }
 
-        let sf = screen.visibleFrame
+    private func centerPanel(_ panel: NSPanel) {
+        let sf = targetScreen().visibleFrame
         let pw = panel.frame.width
         let ph = panel.frame.height
         let x = sf.midX - pw / 2

@@ -19,6 +19,11 @@ struct SwitchItem: Identifiable, Hashable, @unchecked Sendable {
     // Secondary display/search text: URL host for browser tabs, tty for
     // Terminal tabs.
     let subtitle: String?
+    // ScreenCaptureKit's window identity, for previews. Windows only.
+    let cgWindowID: CGWindowID?
+    // Tab sources only: a browser/Terminal window renders just its active tab,
+    // so only that tab may claim the window's preview.
+    let isActiveTab: Bool
 
     init(
         id: String,
@@ -30,7 +35,9 @@ struct SwitchItem: Identifiable, Hashable, @unchecked Sendable {
         pid: pid_t?,
         axWindow: AXUIElement?,
         recencyKey: String? = nil,
-        subtitle: String? = nil
+        subtitle: String? = nil,
+        cgWindowID: CGWindowID? = nil,
+        isActiveTab: Bool = false
     ) {
         self.id = id
         self.kind = kind
@@ -42,6 +49,8 @@ struct SwitchItem: Identifiable, Hashable, @unchecked Sendable {
         self.axWindow = axWindow
         self.recencyKey = recencyKey ?? id
         self.subtitle = subtitle
+        self.cgWindowID = cgWindowID
+        self.isActiveTab = isActiveTab
     }
 
     static func == (lhs: SwitchItem, rhs: SwitchItem) -> Bool { lhs.id == rhs.id }

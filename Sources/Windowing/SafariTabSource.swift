@@ -75,6 +75,11 @@ actor SafariTabSource: SwitchItemSource {
             set output to ""
             repeat with w in windows
                 set wid to id of w
+                try
+                    set activeIdx to index of current tab of w
+                on error
+                    set activeIdx to 0
+                end try
                 set tabCount to count of tabs of w
                 repeat with tabIndex from 1 to tabCount
                     set t to tab tabIndex of w
@@ -88,7 +93,7 @@ actor SafariTabSource: SwitchItemSource {
                     on error
                         set tabURL to ""
                     end try
-                    set output to output & wid & us & tabIndex & us & tabTitle & us & tabURL & rs
+                    set output to output & wid & us & tabIndex & us & tabTitle & us & tabURL & us & ((tabIndex is activeIdx) as text) & rs
                 end repeat
             end repeat
             return output
@@ -110,11 +115,12 @@ actor SafariTabSource: SwitchItemSource {
             .components(separatedBy: rs)
             .compactMap { record in
                 let fields = record.components(separatedBy: us)
-                guard fields.count >= 4,
+                guard fields.count >= 5,
                       let windowID = Int(fields[0]),
                       let tabIndex = Int(fields[1]) else {
                     return nil
                 }
+                let isActiveTab = fields[4] == "true"
 
                 let title = fields[2].trimmingCharacters(in: .whitespacesAndNewlines)
                 let url = fields[3].trimmingCharacters(in: .whitespacesAndNewlines)
@@ -131,7 +137,8 @@ actor SafariTabSource: SwitchItemSource {
                     pid: nil,
                     axWindow: nil,
                     recencyKey: "tab:safari:\(displayTitle)",
-                    subtitle: URL(string: url)?.host
+                    subtitle: URL(string: url)?.host,
+                    isActiveTab: isActiveTab
                 )
             }
         logger.debug("Loaded \(self.cache.count) Safari tabs")

@@ -99,6 +99,11 @@ actor TerminalTabSource: SwitchItemSource {
             set output to ""
             repeat with w in windows
                 set wid to id of w
+                try
+                    set activeTTY to tty of selected tab of w
+                on error
+                    set activeTTY to ""
+                end try
                 set tabCount to count of tabs of w
                 repeat with tabIndex from 1 to tabCount
                     set t to tab tabIndex of w
@@ -121,7 +126,7 @@ actor TerminalTabSource: SwitchItemSource {
                     repeat with processName in tabProcesses
                         set processText to processText & processName & " "
                     end repeat
-                    set output to output & wid & us & tabIndex & us & tabTitle & us & tabTTY & us & processText & rs
+                    set output to output & wid & us & tabIndex & us & tabTitle & us & tabTTY & us & processText & us & ((tabTTY is activeTTY) as text) & rs
                 end repeat
             end repeat
             return output
@@ -143,11 +148,12 @@ actor TerminalTabSource: SwitchItemSource {
             .components(separatedBy: rs)
             .compactMap { record in
                 let fields = record.components(separatedBy: us)
-                guard fields.count >= 5,
+                guard fields.count >= 6,
                       let windowID = Int(fields[0]),
                       let tabIndex = Int(fields[1]) else {
                     return nil
                 }
+                let isActiveTab = fields[5] == "true"
 
                 let customTitle = fields[2].trimmingCharacters(in: .whitespacesAndNewlines)
                 let tty = fields[3].trimmingCharacters(in: .whitespacesAndNewlines)
@@ -166,7 +172,8 @@ actor TerminalTabSource: SwitchItemSource {
                     pid: nil,
                     axWindow: nil,
                     recencyKey: tty.isEmpty ? nil : "tab:terminal:\(tty)",
-                    subtitle: tty.isEmpty ? nil : tty
+                    subtitle: tty.isEmpty ? nil : tty,
+                    isActiveTab: isActiveTab
                 )
             }
         logger.debug("Loaded \(self.cache.count) Terminal tabs")

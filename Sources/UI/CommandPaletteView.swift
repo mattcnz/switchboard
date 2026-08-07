@@ -1,11 +1,14 @@
 import SwiftUI
 import AppKit
+import CoreGraphics
 import OSLog
 
 struct SearchField: NSViewRepresentable {
     @Binding var text: String
     var onUpArrow: () -> Void
     var onDownArrow: () -> Void
+    var onLeftArrow: () -> Void
+    var onRightArrow: () -> Void
     var onReturn: () -> Void
     var onEscape: () -> Void
 
@@ -33,12 +36,15 @@ struct SearchField: NSViewRepresentable {
         // Keep closures fresh so the coordinator always calls current captures.
         context.coordinator.onUpArrow = onUpArrow
         context.coordinator.onDownArrow = onDownArrow
+        context.coordinator.onLeftArrow = onLeftArrow
+        context.coordinator.onRightArrow = onRightArrow
         context.coordinator.onReturn = onReturn
         context.coordinator.onEscape = onEscape
     }
 
     func makeCoordinator() -> Coordinator {
         Coordinator(text: $text, onUpArrow: onUpArrow, onDownArrow: onDownArrow,
+                    onLeftArrow: onLeftArrow, onRightArrow: onRightArrow,
                     onReturn: onReturn, onEscape: onEscape)
     }
 
@@ -47,15 +53,20 @@ struct SearchField: NSViewRepresentable {
         @Binding var text: String
         var onUpArrow: () -> Void
         var onDownArrow: () -> Void
+        var onLeftArrow: () -> Void
+        var onRightArrow: () -> Void
         var onReturn: () -> Void
         var onEscape: () -> Void
 
         init(text: Binding<String>, onUpArrow: @escaping () -> Void,
-             onDownArrow: @escaping () -> Void, onReturn: @escaping () -> Void,
+             onDownArrow: @escaping () -> Void, onLeftArrow: @escaping () -> Void,
+             onRightArrow: @escaping () -> Void, onReturn: @escaping () -> Void,
              onEscape: @escaping () -> Void) {
             _text = text
             self.onUpArrow = onUpArrow
             self.onDownArrow = onDownArrow
+            self.onLeftArrow = onLeftArrow
+            self.onRightArrow = onRightArrow
             self.onReturn = onReturn
             self.onEscape = onEscape
         }
@@ -74,6 +85,12 @@ struct SearchField: NSViewRepresentable {
             switch commandSelector {
             case #selector(NSResponder.moveUp(_:)):      onUpArrow();   return true
             case #selector(NSResponder.moveDown(_:)):    onDownArrow(); return true
+            // Grid navigation takes ←/→; ⌥← and ⌘← still edit the query since
+            // those arrive as different selectors.
+            case #selector(NSResponder.moveLeft(_:)):    onLeftArrow();  return true
+            case #selector(NSResponder.moveRight(_:)):   onRightArrow(); return true
+            case #selector(NSResponder.insertTab(_:)):   onRightArrow(); return true
+            case #selector(NSResponder.insertBacktab(_:)): onLeftArrow(); return true
             case #selector(NSResponder.insertNewline(_:)): onReturn();  return true
             case #selector(NSResponder.cancelOperation(_:)): onEscape(); return true
             default: return false
@@ -92,6 +109,7 @@ final class PaletteViewModel: ObservableObject {
     @Published private(set) var allItems: [SwitchItem] = []
     @Published private(set) var filteredItems: [SwitchItem] = []
     @Published var selectedIndex: Int = 0
+    @Published private(set) var thumbnailIDs: [String: CGWindowID] = [:]
 
     private let sources: [any SwitchItemSource]
     let onActivate: (SwitchItem) -> Void
@@ -150,17 +168,31 @@ final class PaletteViewModel: ObservableObject {
         guard items.map(\.id) != allItems.map(\.id) else { return }
         allItems = items
         prepared = SearchIndex.shared.prepare(items)
+        thumbnailIDs = ThumbnailResolver.map(items)
         updateFiltered()
     }
 
-    func moveUp() {
+    // Grid navigation: ←/→ step one cell, ↑/↓ jump a row. Clamped, no wrap.
+    func moveLeft() {
         guard !filteredItems.isEmpty else { return }
         selectedIndex = max(0, selectedIndex - 1)
     }
 
-    func moveDown() {
+    func moveRight() {
         guard !filteredItems.isEmpty else { return }
         selectedIndex = min(filteredItems.count - 1, selectedIndex + 1)
+    }
+
+    func moveUp() {
+        guard !filteredItems.isEmpty else { return }
+        selectedIndex = max(0, selectedIndex - PaletteLayout.columns)
+    }
+
+    func moveDown() {
+        guard !filteredItems.isEmpty else { return }
+        let next = selectedIndex + PaletteLayout.columns
+        // From a partial last row, land on the final item rather than nothing.
+        selectedIndex = next < filteredItems.count ? next : filteredItems.count - 1
     }
 
     func activateSelected() {
@@ -191,7 +223,14 @@ final class PaletteViewModel: ObservableObject {
 
 struct CommandPaletteView: View {
     @ObservedObject var viewModel: PaletteViewModel
+    @ObservedObject var screenPermission: ScreenRecordingPermissionManager
+    let previewsRequested: Bool
+    let thumbnailProvider: WindowThumbnailProvider
     let onDismiss: () -> Void
+
+    private var previewsEnabled: Bool {
+        previewsRequested && screenPermission.isGranted && !screenPermission.needsRelaunch
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -203,6 +242,8 @@ struct CommandPaletteView: View {
                     text: $viewModel.query,
                     onUpArrow: { viewModel.moveUp() },
                     onDownArrow: { viewModel.moveDown() },
+                    onLeftArrow: { viewModel.moveLeft() },
+                    onRightArrow: { viewModel.moveRight() },
                     onReturn: { viewModel.activateSelected() },
                     onEscape: { onDismiss() }
                 )
@@ -225,7 +266,20 @@ struct CommandPaletteView: View {
             Divider()
                 .opacity(0.5)
 
-            resultsList
+            resultsGrid
+
+            if previewsRequested && !previewsEnabled {
+                // Not a button: the panel hides on resignKey, so anything
+                // clickable here would dismiss itself. Settings and the menu
+                // bar carry the actionable version.
+                Text(screenPermission.needsRelaunch
+                     ? "Relaunch Switchboard to enable previews (menu bar → Relaunch)"
+                     : "Previews need Screen Recording access — enable it in Settings")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .padding(.vertical, 6)
+                    .frame(maxWidth: .infinity)
+            }
         }
         .background(.ultraThinMaterial)
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
@@ -233,12 +287,14 @@ struct CommandPaletteView: View {
     }
 
     @ViewBuilder
-    private var resultsList: some View {
+    private var resultsGrid: some View {
         if viewModel.allItems.isEmpty && viewModel.query.isEmpty {
-            Text("Loading…")
-                .foregroundColor(.secondary)
-                .padding(32)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            VStack(spacing: 10) {
+                ProgressView()
+                Text("Loading windows…").foregroundColor(.secondary)
+            }
+            .padding(32)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if viewModel.filteredItems.isEmpty {
             Text("No matches")
                 .foregroundColor(.secondary)
@@ -247,17 +303,30 @@ struct CommandPaletteView: View {
         } else {
             ScrollViewReader { proxy in
                 ScrollView {
-                    LazyVStack(spacing: 0) {
+                    LazyVGrid(
+                        columns: Array(
+                            repeating: GridItem(.flexible(), spacing: PaletteLayout.spacing),
+                            count: PaletteLayout.columns
+                        ),
+                        spacing: PaletteLayout.spacing
+                    ) {
                         ForEach(viewModel.filteredItems, id: \.id) { item in
-                            SearchResultRow(item: item, isSelected: item.id == viewModel.selectedItemID)
-                                .equatable()
-                                .id(item.id)
-                                .onTapGesture {
-                                    viewModel.select(id: item.id)
-                                    viewModel.activateSelected()
-                                }
+                            SwitchItemCell(
+                                item: item,
+                                cgWindowID: viewModel.thumbnailIDs[item.id],
+                                isSelected: item.id == viewModel.selectedItemID,
+                                previewsEnabled: previewsEnabled,
+                                provider: thumbnailProvider
+                            )
+                            .equatable()
+                            .id(item.id)
+                            .onTapGesture {
+                                viewModel.select(id: item.id)
+                                viewModel.activateSelected()
+                            }
                         }
                     }
+                    .padding(16)
                 }
                 .onChange(of: viewModel.selectedItemID) { _, newID in
                     guard let newID else { return }

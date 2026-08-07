@@ -16,7 +16,8 @@ struct SwitchboardApp: App {
             AppSettingsView(
                 settings: settings,
                 permissionManager: permissionManager,
-                launchAtLoginManager: launchAtLoginManager
+                launchAtLoginManager: launchAtLoginManager,
+                screenPermission: .shared
             )
         }
     }
@@ -75,11 +76,16 @@ final class AppSettings: ObservableObject {
         didSet { UserDefaults.standard.set(includeTerminalTabs, forKey: Keys.includeTerminalTabs) }
     }
 
+    @Published var showPreviews: Bool {
+        didSet { UserDefaults.standard.set(showPreviews, forKey: Keys.showPreviews) }
+    }
+
     private enum Keys {
         static let includeWindows = "settings.includeWindows"
         static let includeChromeTabs = "settings.includeChromeTabs"
         static let includeSafariTabs = "settings.includeSafariTabs"
         static let includeTerminalTabs = "settings.includeTerminalTabs"
+        static let showPreviews = "settings.showPreviews"
     }
 
     private init(defaults: UserDefaults = .standard) {
@@ -87,6 +93,7 @@ final class AppSettings: ObservableObject {
         includeChromeTabs = defaults.object(forKey: Keys.includeChromeTabs) as? Bool ?? true
         includeSafariTabs = defaults.object(forKey: Keys.includeSafariTabs) as? Bool ?? true
         includeTerminalTabs = defaults.object(forKey: Keys.includeTerminalTabs) as? Bool ?? true
+        showPreviews = defaults.object(forKey: Keys.showPreviews) as? Bool ?? true
     }
 }
 
@@ -144,6 +151,7 @@ struct AppSettingsView: View {
     @ObservedObject var settings: AppSettings
     @ObservedObject var permissionManager: AccessibilityPermissionManager
     @ObservedObject var launchAtLoginManager: LaunchAtLoginManager
+    @ObservedObject var screenPermission: ScreenRecordingPermissionManager
 
     var body: some View {
         Form {
@@ -160,6 +168,13 @@ struct AppSettingsView: View {
                 Toggle("Safari tabs", isOn: $settings.includeSafariTabs)
                 Toggle("Terminal tabs", isOn: $settings.includeTerminalTabs)
                 Text("Tab sources may prompt for Automation access the first time they are used.")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+
+            Section("Previews") {
+                Toggle("Show window previews", isOn: $settings.showPreviews)
+                Text("Previews need Screen Recording access. Windows without one — minimized, on another Space, or browser tabs that aren't active — show their app icon.")
                     .font(.caption)
                     .foregroundColor(.secondary)
             }
@@ -201,6 +216,32 @@ struct AppSettingsView: View {
                     }
                 }
 
+                HStack {
+                    Text("Screen Recording")
+                    Spacer()
+                    Text(screenPermission.isGranted ? "Granted" : "Not granted")
+                        .foregroundColor(screenPermission.isGranted ? .green : .secondary)
+                }
+
+                HStack(spacing: 12) {
+                    Button("Grant Screen Recording") {
+                        screenPermission.request()
+                    }
+
+                    if screenPermission.needsRelaunch {
+                        Button("Relaunch Switchboard") {
+                            screenPermission.relaunch()
+                        }
+                        .buttonStyle(.borderedProminent)
+                    }
+                }
+
+                if screenPermission.needsRelaunch {
+                    Text("macOS applies a new Screen Recording grant only after the app restarts.")
+                        .font(.caption)
+                        .foregroundColor(.orange)
+                }
+
                 HStack(spacing: 12) {
                     Button("Request Chrome Access") {
                         ChromeTabSource.requestAutomationPermission()
@@ -236,6 +277,7 @@ struct AppSettingsView: View {
         .frame(width: 540)
         .onAppear {
             permissionManager.recheck()
+            screenPermission.recheck()
             launchAtLoginManager.refresh()
         }
     }

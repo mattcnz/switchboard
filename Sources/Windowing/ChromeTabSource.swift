@@ -143,11 +143,12 @@ actor ChromeTabSource: SwitchItemSource {
             repeat with w in windows
                 try
                     set wid to id of w
+                    set activeIdx to active tab index of w
                     set tabCount to count of tabs of w
                     repeat with tabIndex from 1 to tabCount
                         set t to tab tabIndex of w
                         try
-                            set output to output & wid & us & tabIndex & us & (id of t) & us & (title of t) & us & (URL of t) & rs
+                            set output to output & wid & us & tabIndex & us & (id of t) & us & (title of t) & us & (URL of t) & us & ((tabIndex is activeIdx) as text) & rs
                         end try
                     end repeat
                 end try
@@ -169,12 +170,13 @@ actor ChromeTabSource: SwitchItemSource {
             .components(separatedBy: rs)
             .compactMap { record -> SwitchItem? in
                 let fields = record.components(separatedBy: us)
-                guard fields.count >= 5,
+                guard fields.count >= 6,
                       let wid = Int(fields[0]),
                       let tabIndex = Int(fields[1]),
                       let tid = Int(fields[2]) else { return nil }
                 let title = fields[3]
                 let url   = fields[4]
+                let isActiveTab = fields[5] == "true"
                 let display = title.isEmpty ? url : title
                 guard !display.isEmpty else { return nil }
                 return SwitchItem(
@@ -187,7 +189,8 @@ actor ChromeTabSource: SwitchItemSource {
                     pid: nil,
                     axWindow: nil,
                     recencyKey: "tab:chrome:\(tid)",
-                    subtitle: URL(string: url)?.host
+                    subtitle: URL(string: url)?.host,
+                    isActiveTab: isActiveTab
                 )
             }
         Self.logger.debug("Loaded \(self.cache.count) Chrome tabs")

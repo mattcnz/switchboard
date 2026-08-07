@@ -13,10 +13,13 @@ final class AppCoordinator: NSObject {
     private let safariTabSource = SafariTabSource()
     private let terminalTabSource = TerminalTabSource()
     private let activator = WindowActivator()
+    private let thumbnailProvider = WindowThumbnailProvider()
+    private let screenPermission = ScreenRecordingPermissionManager.shared
     private var panelController: FloatingPanelController?
     private var hotkeyManager: HotkeyManager?
     private var onboardingWindow: NSWindow?
     private var statusItem: NSStatusItem?
+    private var relaunchMenuItem: NSMenuItem?
     private var trustPollTimer: Timer?
     private var cancellables = Set<AnyCancellable>()
 
@@ -24,8 +27,17 @@ final class AppCoordinator: NSObject {
         logger.info("Switchboard starting, binary built \(BuildInfo.builtAtDescription, privacy: .public)")
         setupStatusItem()
 
-        if ProcessInfo.processInfo.environment["SWITCHBOARD_BENCH"] != nil {
+        switch ProcessInfo.processInfo.environment["SWITCHBOARD_BENCH"] {
+        case "ui":
+            // Open the palette unattended so the grid can be screenshotted.
+            Task { @MainActor in
+                try? await Task.sleep(for: .seconds(2))
+                self.panelController?.toggle()
+            }
+        case .some:
             Task { await runFilterBenchmark() }
+        case nil:
+            break
         }
 
         // Single path for reacting to trust: fires with the current value on
@@ -49,6 +61,9 @@ final class AppCoordinator: NSObject {
         ) { [weak self] _ in
             Task { @MainActor [weak self] in
                 self?.permissionManager.recheck()
+                // Fires when the user returns from System Settings — exactly
+                // when a new Screen Recording grant needs noticing.
+                self?.screenPermission.recheck()
             }
         }
     }
@@ -90,12 +105,20 @@ final class AppCoordinator: NSObject {
         )
 
         let menu = NSMenu()
+        menu.delegate = self
 
         let open = NSMenuItem(title: "Open Palette", action: #selector(openPaletteFromMenu), keyEquivalent: "")
         open.target = self
         menu.addItem(open)
 
         menu.addItem(.separator())
+
+        // Shown only while a Screen Recording grant is pending a restart.
+        let relaunch = NSMenuItem(title: "Relaunch to Enable Previews", action: #selector(relaunchFromMenu), keyEquivalent: "")
+        relaunch.target = self
+        relaunch.isHidden = true
+        menu.addItem(relaunch)
+        relaunchMenuItem = relaunch
 
         let permissions = NSMenuItem(title: "Permissions…", action: #selector(showPermissionsFromMenu), keyEquivalent: "")
         permissions.target = self
@@ -112,8 +135,13 @@ final class AppCoordinator: NSObject {
         statusItem = item
     }
 
+    @objc private func relaunchFromMenu() {
+        screenPermission.relaunch()
+    }
+
     @objc private func openPaletteFromMenu() {
         permissionManager.recheck()
+        screenPermission.recheck()
         if let panelController, permissionManager.isTrusted {
             panelController.toggle()
         } else {
@@ -158,7 +186,9 @@ final class AppCoordinator: NSObject {
 
         let ctrl = FloatingPanelController(
             sourceProvider: { [weak self] in self?.activeSources() ?? [] },
-            activator: activator
+            activator: activator,
+            thumbnailProvider: thumbnailProvider,
+            previewsRequested: { [weak self] in self?.settings.showPreviews ?? false }
         )
         panelController = ctrl
         hotkeyManager = HotkeyManager { ctrl.toggle() }
@@ -198,6 +228,46 @@ final class AppCoordinator: NSObject {
         for end in stride(from: word.count - 1, through: 0, by: -1) {
             viewModel.query = String(word.prefix(end))
         }
+        // Thumbnails: resolve ids the way the grid does, then capture the
+        // first screenful concurrently.
+        viewModel.query = ""
+        let ids = viewModel.thumbnailIDs
+        let windowItems = viewModel.allItems.filter { $0.kind == .window }
+        let activeTabs = viewModel.allItems.filter { $0.kind == .browserTab && $0.isActiveTab }
+        logger.info("bench: screenRecording=\(CGPreflightScreenCaptureAccess()) resolved \(ids.count) thumbnail ids (\(windowItems.count) windows, \(activeTabs.count) active tabs of \(viewModel.allItems.count - windowItems.count) tabs)")
+
+        await thumbnailProvider.beginSession()
+        let targets = viewModel.filteredItems.prefix(12).compactMap { ids[$0.id] }
+        let start = DispatchTime.now()
+        await withTaskGroup(of: Bool.self) { group in
+            for windowID in targets {
+                group.addTask { [thumbnailProvider] in
+                    await thumbnailProvider.thumbnail(for: windowID, width: 200, priority: false) != nil
+                }
+            }
+            var captured = 0
+            for await ok in group where ok { captured += 1 }
+            let ms = Double(DispatchTime.now().uptimeNanoseconds - start.uptimeNanoseconds) / 1_000_000
+            logger.info("bench: \(captured)/\(targets.count) thumbnails in \(ms, format: .fixed(precision: 0))ms")
+        }
+        await thumbnailProvider.endSession()
+
+        // Second pass = the "reopen the palette" case; should be cache hits.
+        await thumbnailProvider.beginSession()
+        let start2 = DispatchTime.now()
+        await withTaskGroup(of: Bool.self) { group in
+            for windowID in targets {
+                group.addTask { [thumbnailProvider] in
+                    await thumbnailProvider.thumbnail(for: windowID, width: 200, priority: false) != nil
+                }
+            }
+            var captured = 0
+            for await ok in group where ok { captured += 1 }
+            let ms = Double(DispatchTime.now().uptimeNanoseconds - start2.uptimeNanoseconds) / 1_000_000
+            logger.info("bench: reopen \(captured)/\(targets.count) thumbnails in \(ms, format: .fixed(precision: 0))ms")
+        }
+        await thumbnailProvider.endSession()
+
         logger.info("bench: done")
         NSApp.terminate(nil)
     }
@@ -224,5 +294,14 @@ final class AppCoordinator: NSObject {
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
         onboardingWindow = window
+    }
+}
+
+extension AppCoordinator: NSMenuDelegate {
+    nonisolated func menuWillOpen(_ menu: NSMenu) {
+        MainActor.assumeIsolated {
+            screenPermission.recheck()
+            relaunchMenuItem?.isHidden = !screenPermission.needsRelaunch
+        }
     }
 }

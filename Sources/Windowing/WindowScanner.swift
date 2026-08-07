@@ -106,7 +106,8 @@ actor WindowScanner: SwitchItemSource {
                 pid: pid,
                 axWindow: window,
                 recencyKey: "win:\(bundleID ?? appName):\(title)",
-                subtitle: isMinimized ? "Minimized" : nil
+                subtitle: isMinimized ? "Minimized" : nil,
+                cgWindowID: cgWindowID(for: window)
             ))
         }
         return items
