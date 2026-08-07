@@ -1,5 +1,8 @@
 import Foundation
 
+// Reads are cached in memory: the palette used to deep-cast these UserDefaults
+// dictionaries on every keystroke, and they only change on activation.
+@MainActor
 enum RecentsStore {
     private static let activationsKey = "recents.activationsByKey"
     private static let legacyKey = "recents.lastActivatedByID"
@@ -7,6 +10,9 @@ enum RecentsStore {
     private static let maxAge: TimeInterval = 30 * 24 * 60 * 60
     private static let maxTimestampsPerKey = 10
     private static let maxQueryChoices = 300
+
+    private static var activationsCache: [String: [TimeInterval]]?
+    private static var queryChoicesCache: [String: String]?
 
     // MARK: Activations → frecency
 
@@ -26,6 +32,7 @@ enum RecentsStore {
             return kept.isEmpty ? nil : kept
         }
         defaults.set(activations, forKey: activationsKey)
+        activationsCache = activations
     }
 
     // Frequency weighted by age: a window you jump to constantly outranks one
@@ -48,7 +55,10 @@ enum RecentsStore {
     }
 
     private static func allActivations(defaults: UserDefaults) -> [String: [TimeInterval]] {
+        if let activationsCache { return activationsCache }
+
         if let dict = defaults.dictionary(forKey: activationsKey) as? [String: [TimeInterval]] {
+            activationsCache = dict
             return dict
         }
         // One-time migration from the single-timestamp format.
@@ -56,8 +66,10 @@ enum RecentsStore {
             let migrated = legacy.mapValues { [$0] }
             defaults.set(migrated, forKey: activationsKey)
             defaults.removeObject(forKey: legacyKey)
+            activationsCache = migrated
             return migrated
         }
+        activationsCache = [:]
         return [:]
     }
 
@@ -77,12 +89,17 @@ enum RecentsStore {
             }
         }
         defaults.set(choices, forKey: queryChoicesKey)
+        queryChoicesCache = nil
     }
 
-    static func learnedChoice(for query: String, defaults: UserDefaults = .standard) -> String? {
-        guard !query.isEmpty,
-              let choices = defaults.dictionary(forKey: queryChoicesKey) as? [String: [String: Any]],
-              let entry = choices[query] else { return nil }
-        return entry["key"] as? String
+    // Flattened query -> recencyKey, cached: the stored form is a nested
+    // dictionary whose deep cast is far too expensive to repeat per keystroke.
+    static func allQueryChoices(defaults: UserDefaults = .standard) -> [String: String] {
+        if let queryChoicesCache { return queryChoicesCache }
+
+        let stored = defaults.dictionary(forKey: queryChoicesKey) as? [String: [String: Any]] ?? [:]
+        let flattened = stored.compactMapValues { $0["key"] as? String }
+        queryChoicesCache = flattened
+        return flattened
     }
 }

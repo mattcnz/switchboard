@@ -24,6 +24,10 @@ final class AppCoordinator: NSObject {
         logger.info("Switchboard starting, binary built \(BuildInfo.builtAtDescription, privacy: .public)")
         setupStatusItem()
 
+        if ProcessInfo.processInfo.environment["SWITCHBOARD_BENCH"] != nil {
+            Task { await runFilterBenchmark() }
+        }
+
         // Single path for reacting to trust: fires with the current value on
         // subscribe, and again whenever the poll/recheck flips it.
         permissionManager.$isTrusted
@@ -177,6 +181,25 @@ final class AppCoordinator: NSObject {
         }
 
         return sources
+    }
+
+    // Drives the real palette view model headlessly so `filter …ms` lines can
+    // be measured without a human at the keyboard. Run: SWITCHBOARD_BENCH=1
+    private func runFilterBenchmark() async {
+        let viewModel = PaletteViewModel(sources: activeSources(), onActivate: { _ in })
+        await viewModel.loadItems()
+        logger.info("bench: loaded \(viewModel.allItems.count) items")
+
+        // Typing "chrome" one key at a time, then backspacing to empty.
+        let word = "chrome"
+        for end in 1...word.count {
+            viewModel.query = String(word.prefix(end))
+        }
+        for end in stride(from: word.count - 1, through: 0, by: -1) {
+            viewModel.query = String(word.prefix(end))
+        }
+        logger.info("bench: done")
+        NSApp.terminate(nil)
     }
 
     private func showOnboarding() {

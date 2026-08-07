@@ -87,39 +87,47 @@ struct SearchField: NSViewRepresentable {
 final class PaletteViewModel: ObservableObject {
     private let logger = Logger(subsystem: "com.mattmilliken.switchboard", category: "PaletteViewModel")
     @Published var query: String = "" {
-        didSet {
-            logger.debug("query updated='\(self.query, privacy: .public)'")
-            updateFiltered()
-        }
-    }
-    @Published private(set) var allItems: [SwitchItem] = [] {
         didSet { updateFiltered() }
     }
+    @Published private(set) var allItems: [SwitchItem] = []
     @Published private(set) var filteredItems: [SwitchItem] = []
     @Published var selectedIndex: Int = 0
 
     private let sources: [any SwitchItemSource]
     let onActivate: (SwitchItem) -> Void
+    private var prepared: [PreparedItem] = []
+    // Snapshotted once per open. The panel is non-activating, so focus can't
+    // change while it's up — reading this live would be wrong, not just slow.
+    private let context: RankingContext
+
+    var selectedItemID: String? {
+        filteredItems.indices.contains(selectedIndex) ? filteredItems[selectedIndex].id : nil
+    }
 
     init(sources: [any SwitchItemSource], onActivate: @escaping (SwitchItem) -> Void) {
         self.sources = sources
         self.onActivate = onActivate
+        self.context = RankingContext(
+            frecency: RecentsStore.frecencyScores(),
+            queryChoices: RecentsStore.allQueryChoices(),
+            mruRanks: FocusTracker.shared.mruRanks,
+            currentWindowID: FocusTracker.shared.currentWindowID
+        )
     }
 
     func loadItems() async {
-        allItems = []
         var itemsBySource: [Int: [SwitchItem]] = [:]
 
-        func rebuildAllItems() {
+        func merged() -> [SwitchItem] {
             var seenIDs = Set<String>()
-            allItems = sources.indices
+            return sources.indices
                 .flatMap { itemsBySource[$0] ?? [] }
                 .filter { seenIDs.insert($0.id).inserted }
         }
 
-        // Phase 1: cached snapshots render instantly. Phase 2: fresh data
-        // replaces each source's slice as it lands, so stale entries never
-        // outlive one palette open.
+        // Phase 1: cached snapshots render instantly, applied per source so
+        // results appear progressively. Phase 2: fresh data lands in one
+        // atomic apply, so stale entries never outlive one palette open.
         for phase in [true, false] {
             await withTaskGroup(of: (Int, [SwitchItem]).self) { group in
                 for (index, source) in sources.enumerated() {
@@ -129,11 +137,20 @@ final class PaletteViewModel: ObservableObject {
                 }
                 for await (index, items) in group {
                     itemsBySource[index] = items
-                    rebuildAllItems()
-                    logger.debug("source \(index) \(phase ? "cached" : "fresh"): \(items.count) items, total=\(self.allItems.count)")
+                    if phase { applyItems(merged()) }
                 }
             }
+            if !phase { applyItems(merged()) }
         }
+    }
+
+    private func applyItems(_ items: [SwitchItem]) {
+        // Phase 2 usually returns exactly what phase 1 did; re-filtering that
+        // is pure waste, and it would stomp the selection mid-typing.
+        guard items.map(\.id) != allItems.map(\.id) else { return }
+        allItems = items
+        prepared = SearchIndex.shared.prepare(items)
+        updateFiltered()
     }
 
     func moveUp() {
@@ -156,25 +173,25 @@ final class PaletteViewModel: ObservableObject {
         onActivate(item)
     }
 
+    func select(id: String) {
+        guard let index = filteredItems.firstIndex(where: { $0.id == id }) else { return }
+        selectedIndex = index
+    }
+
     private func updateFiltered() {
-        filteredItems = FuzzySearch.rank(
-            allItems,
-            query: query,
-            mruRanks: FocusTracker.shared.mruRanks(),
-            currentWindowID: FocusTracker.shared.currentWindowID
-        )
-        selectedIndex = 0
-        logger.debug("filtered query='\(self.query, privacy: .public)' all=\(self.allItems.count) matches=\(self.filteredItems.count)")
+        let start = DispatchTime.now()
+        filteredItems = FuzzySearch.rank(prepared, query: query, context: context)
+        // @Published has no equality check; assigning 0 to an already-0 index
+        // costs a second full body evaluation.
+        if selectedIndex != 0 { selectedIndex = 0 }
+        let ms = Double(DispatchTime.now().uptimeNanoseconds - start.uptimeNanoseconds) / 1_000_000
+        logger.debug("filter q='\(self.query, privacy: .public)' items=\(self.prepared.count) matches=\(self.filteredItems.count) \(ms, format: .fixed(precision: 2))ms")
     }
 }
 
 struct CommandPaletteView: View {
     @ObservedObject var viewModel: PaletteViewModel
     let onDismiss: () -> Void
-
-    private var resultsListID: String {
-        viewModel.query + ":" + viewModel.filteredItems.map(\.id).joined(separator: "|")
-    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -230,21 +247,28 @@ struct CommandPaletteView: View {
         } else {
             ScrollViewReader { proxy in
                 ScrollView {
-                    VStack(spacing: 0) {
-                        ForEach(Array(viewModel.filteredItems.enumerated()), id: \.element.id) { index, item in
-                            SearchResultRow(item: item, isSelected: index == viewModel.selectedIndex)
-                                .id(index)
+                    LazyVStack(spacing: 0) {
+                        ForEach(viewModel.filteredItems, id: \.id) { item in
+                            SearchResultRow(item: item, isSelected: item.id == viewModel.selectedItemID)
+                                .equatable()
+                                .id(item.id)
                                 .onTapGesture {
-                                    viewModel.selectedIndex = index
+                                    viewModel.select(id: item.id)
                                     viewModel.activateSelected()
                                 }
                         }
                     }
                 }
-                .id(resultsListID)
-                .onChange(of: viewModel.selectedIndex) { _, newIndex in
+                .onChange(of: viewModel.selectedItemID) { _, newID in
+                    guard let newID else { return }
                     withAnimation(.easeInOut(duration: 0.1)) {
-                        proxy.scrollTo(newIndex, anchor: .center)
+                        proxy.scrollTo(newID, anchor: .center)
+                    }
+                }
+                .onChange(of: viewModel.query) { _, _ in
+                    // Unanimated: this fires on every keystroke.
+                    if let first = viewModel.filteredItems.first?.id {
+                        proxy.scrollTo(first, anchor: .top)
                     }
                 }
             }

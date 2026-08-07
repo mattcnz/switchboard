@@ -13,6 +13,8 @@ final class FocusTracker {
     // Most recent first. Ids use WindowScanner's scheme ("win:<pid>:<CFHash>"),
     // which is stable for a window's lifetime, so entries match scan items.
     private(set) var mruWindowIDs: [String] = []
+    // Kept in sync on focus changes so filtering never rebuilds it per keystroke.
+    private(set) var mruRanks: [String: Int] = [:]
     private var observers: [pid_t: AXObserver] = [:]
     private var started = false
     private let maxEntries = 60
@@ -62,10 +64,10 @@ final class FocusTracker {
     // palette is up) — the one place they never want to switch to.
     var currentWindowID: String? { mruWindowIDs.first }
 
-    func mruRanks() -> [String: Int] {
+    private func rebuildRanks() {
         var ranks: [String: Int] = [:]
         for (index, id) in mruWindowIDs.enumerated() { ranks[id] = index }
-        return ranks
+        mruRanks = ranks
     }
 
     // MARK: Private
@@ -99,6 +101,7 @@ final class FocusTracker {
             CFRunLoopRemoveSource(CFRunLoopGetMain(), AXObserverGetRunLoopSource(observer), .defaultMode)
         }
         mruWindowIDs.removeAll { $0.hasPrefix("win:\(pid):") }
+        rebuildRanks()
     }
 
     private func handleFocusNotification() {
@@ -120,6 +123,7 @@ final class FocusTracker {
         if mruWindowIDs.count > maxEntries {
             mruWindowIDs.removeLast(mruWindowIDs.count - maxEntries)
         }
+        rebuildRanks()
         Self.logger.debug("focus → \(app.localizedName ?? "?", privacy: .public) \(id, privacy: .public) (mru: \(self.mruWindowIDs.count))")
     }
 }

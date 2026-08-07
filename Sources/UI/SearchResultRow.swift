@@ -1,8 +1,13 @@
 import SwiftUI
 
-struct SearchResultRow: View {
+struct SearchResultRow: View, Equatable {
     let item: SwitchItem
     let isSelected: Bool
+
+    // Cheap to construct, expensive to re-render — skip rows that haven't changed.
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.item.id == rhs.item.id && lhs.isSelected == rhs.isSelected
+    }
 
     var body: some View {
         HStack(spacing: 12) {
