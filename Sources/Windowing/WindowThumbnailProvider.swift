@@ -91,7 +91,7 @@ actor WindowThumbnailProvider {
         defer { inFlight[windowID] = nil }
 
         if shareable.isEmpty || Date().timeIntervalSince(shareableFetchedAt) > Self.freshFor {
-            await refreshShareableContent()
+            await ensureShareableContentFresh()
         }
         guard let scWindow = shareable[windowID] else {
             // Minimized or on another Space: not capturable, but a previously
@@ -126,6 +126,24 @@ actor WindowThumbnailProvider {
             Self.logger.debug("thumb capture failed wid=\(windowID): \(error.localizedDescription, privacy: .public)")
             return cache[windowID]?.image
         }
+    }
+
+    // On a cold cache, every visible cell hits this at once. Without
+    // coalescing, each one sees `shareable.isEmpty` before any of the others
+    // finish awaiting and fires its own redundant SCShareableContent fetch —
+    // observed as 9 concurrent fetches on a single palette open, each slower
+    // than the last from contention, delaying every capture behind them.
+    private var refreshTask: Task<Void, Never>?
+
+    private func ensureShareableContentFresh() async {
+        if let refreshTask {
+            await refreshTask.value
+            return
+        }
+        let task = Task { await self.refreshShareableContent() }
+        refreshTask = task
+        await task.value
+        refreshTask = nil
     }
 
     private func refreshShareableContent() async {
