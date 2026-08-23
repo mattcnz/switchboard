@@ -7,7 +7,10 @@ options:
 packages:
   KeyboardShortcuts:
     url: https://github.com/sindresorhus/KeyboardShortcuts
-    from: 2.2.0
+    # Pinned exactly, not a floating range: `make dmg` Developer ID-signs and
+    # notarizes whatever resolves here, so an unreviewed upstream release would
+    # ship to users as software Gatekeeper vouches for. Bump deliberately.
+    exactVersion: 2.4.0
 
 targets:
   Switchboard:

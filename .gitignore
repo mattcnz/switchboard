@@ -2,3 +2,4 @@ Switchboard.xcodeproj/
 build/
 .DS_Store
 build-release/
+.gstack/

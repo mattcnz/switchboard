@@ -35,7 +35,7 @@ logs:
 # keychain (asks for an app-specific password, generated at
 # https://appleid.apple.com under Sign-In and Security):
 #   xcrun notarytool store-credentials $(NOTARY_PROFILE) \
-#     --apple-id <your-apple-id> --team-id MM267F63K8
+#     --apple-id <your-apple-id> --team-id <your-team-id>
 release: generate
 	xcodebuild -project Switchboard.xcodeproj -scheme Switchboard \
 	  -configuration Release -derivedDataPath build-release build
