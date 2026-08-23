@@ -26,11 +26,13 @@ targets:
         CFBundleVersion: '1'
         CFBundleShortVersionString: '0.1'
         NSAccessibilityUsageDescription: Switchboard needs Accessibility access to list and switch between your open windows.
+        NSAppleEventsUsageDescription: Switchboard uses Apple Events to switch tabs in Chrome, Safari, and Terminal.
         NSHumanReadableCopyright: Copyright © 2026 Matt Milliken. All rights reserved.
     entitlements:
       path: Switchboard.entitlements
       properties:
         com.apple.security.app-sandbox: false
+        com.apple.security.automation.apple-events: true
     dependencies:
       - package: KeyboardShortcuts
     settings:

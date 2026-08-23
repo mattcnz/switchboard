@@ -24,6 +24,8 @@
 	<true/>
 	<key>NSAccessibilityUsageDescription</key>
 	<string>Switchboard needs Accessibility access to list and switch between your open windows.</string>
+	<key>NSAppleEventsUsageDescription</key>
+	<string>Switchboard uses Apple Events to switch tabs in Chrome, Safari, and Terminal.</string>
 	<key>NSHumanReadableCopyright</key>
 	<string>Copyright © 2026 Matt Milliken. All rights reserved.</string>
 	<key>NSPrincipalClass</key>
