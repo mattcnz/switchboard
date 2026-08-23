@@ -30,7 +30,7 @@ struct SwitchItemCell: View, Equatable {
         VStack(alignment: .leading, spacing: 6) {
             thumbnailBox
             VStack(alignment: .leading, spacing: 1) {
-                Text(item.title)
+                Text(item.displayTitle)
                     .font(.caption)
                     .lineLimit(1)
                     .truncationMode(.tail)
