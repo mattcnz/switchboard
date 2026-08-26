@@ -20,7 +20,18 @@ struct SearchField: NSViewRepresentable {
         field.backgroundColor = .clear
         field.focusRingType = .none
         field.font = .systemFont(ofSize: 17)
-        field.placeholderString = "Search windows…"
+        // The panel sits on `.ultraThinMaterial`, which shows whatever's on
+        // the desktop through the blur — the system placeholder gray was
+        // tuned for a solid background and washes out over light wallpaper.
+        // labelColor at partial opacity tracks light/dark mode while still
+        // reading clearly over the vibrancy.
+        field.placeholderAttributedString = NSAttributedString(
+            string: "Search windows…",
+            attributes: [
+                .foregroundColor: NSColor.labelColor.withAlphaComponent(0.55),
+                .font: NSFont.systemFont(ofSize: 17)
+            ]
+        )
         field.cell?.wraps = false
         field.cell?.isScrollable = true
         DispatchQueue.main.async {
@@ -224,6 +235,7 @@ final class PaletteViewModel: ObservableObject {
 struct CommandPaletteView: View {
     @ObservedObject var viewModel: PaletteViewModel
     @ObservedObject var screenPermission: ScreenRecordingPermissionManager
+    @ObservedObject var metrics: PaletteMetrics
     let previewsRequested: Bool
     let thumbnailProvider: WindowThumbnailProvider
     let onDismiss: () -> Void
@@ -316,6 +328,7 @@ struct CommandPaletteView: View {
                                 cgWindowID: viewModel.thumbnailIDs[item.id],
                                 isSelected: item.id == viewModel.selectedItemID,
                                 previewsEnabled: previewsEnabled,
+                                captureWidth: metrics.thumbnailWidth,
                                 provider: thumbnailProvider
                             )
                             .equatable()

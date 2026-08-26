@@ -4,8 +4,17 @@ import CoreGraphics
 enum PaletteLayout {
     static let columns = 4
     static let spacing: CGFloat = 16
-    static let thumbnailWidth: CGFloat = 200
+    static let gridPadding: CGFloat = 16
     static let thumbnailAspect: CGFloat = 0.625   // 16:10
+
+    // GridItem(.flexible()) already renders each cell at this width; mirror
+    // the math so captures are made at the size cells actually render at,
+    // rather than a fixed resolution that gets blurrier as the panel is
+    // resized larger.
+    static func thumbnailWidth(forPanelWidth panelWidth: CGFloat) -> CGFloat {
+        let usable = panelWidth - gridPadding * 2 - spacing * CGFloat(columns - 1)
+        return max(80, usable / CGFloat(columns))
+    }
 }
 
 struct SwitchItemCell: View, Equatable {
@@ -13,6 +22,7 @@ struct SwitchItemCell: View, Equatable {
     let cgWindowID: CGWindowID?
     let isSelected: Bool
     let previewsEnabled: Bool
+    let captureWidth: CGFloat
     let provider: WindowThumbnailProvider
 
     // Per-cell state on purpose: a shared @Published dictionary would
@@ -24,6 +34,7 @@ struct SwitchItemCell: View, Equatable {
             && lhs.cgWindowID == rhs.cgWindowID
             && lhs.isSelected == rhs.isSelected
             && lhs.previewsEnabled == rhs.previewsEnabled
+            && lhs.captureWidth == rhs.captureWidth
     }
 
     var body: some View {
@@ -31,12 +42,12 @@ struct SwitchItemCell: View, Equatable {
             thumbnailBox
             VStack(alignment: .leading, spacing: 1) {
                 Text(item.displayTitle)
-                    .font(.caption)
+                    .font(.subheadline)
                     .lineLimit(1)
                     .truncationMode(.tail)
                     .foregroundColor(.primary)
                 Text(detailText)
-                    .font(.caption2)
+                    .font(.footnote)
                     .foregroundColor(.secondary)
                     .lineLimit(1)
             }
@@ -51,15 +62,16 @@ struct SwitchItemCell: View, Equatable {
         .task(id: taskKey) {
             guard previewsEnabled, let cgWindowID else { return }
             thumbnail = await provider.thumbnail(
-                for: cgWindowID, width: PaletteLayout.thumbnailWidth, priority: isSelected
+                for: cgWindowID, width: captureWidth, priority: isSelected
             )
         }
     }
 
-    // Re-request when the window changes, or when this cell becomes selected
-    // (selection jumps the capture queue).
+    // Re-request when the window changes, when this cell becomes selected
+    // (selection jumps the capture queue), or when the panel is resized
+    // enough to want a different capture resolution.
     private var taskKey: String {
-        "\(cgWindowID.map(String.init) ?? "-"):\(isSelected)"
+        "\(cgWindowID.map(String.init) ?? "-"):\(isSelected):\(Int(captureWidth))"
     }
 
     @ViewBuilder
