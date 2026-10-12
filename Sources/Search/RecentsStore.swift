@@ -7,6 +7,7 @@ enum RecentsStore {
     private static let activationsKey = "recents.activationsByKey"
     private static let legacyKey = "recents.lastActivatedByID"
     private static let queryChoicesKey = "recents.queryChoices"
+    private static let keyVersionKey = "recents.keyVersion"
     private static let maxAge: TimeInterval = 30 * 24 * 60 * 60
     private static let maxTimestampsPerKey = 10
     private static let maxQueryChoices = 300
@@ -56,6 +57,7 @@ enum RecentsStore {
 
     private static func allActivations(defaults: UserDefaults) -> [String: [TimeInterval]] {
         if let activationsCache { return activationsCache }
+        migrateKeysIfNeeded(defaults: defaults)
 
         if let dict = defaults.dictionary(forKey: activationsKey) as? [String: [TimeInterval]] {
             activationsCache = dict
@@ -77,6 +79,7 @@ enum RecentsStore {
 
     static func recordQueryChoice(query: String, key: String, at date: Date = Date(), defaults: UserDefaults = .standard) {
         guard !query.isEmpty else { return }
+        migrateKeysIfNeeded(defaults: defaults)
         var choices = defaults.dictionary(forKey: queryChoicesKey) as? [String: [String: Any]] ?? [:]
         choices[query] = ["key": key, "at": date.timeIntervalSince1970]
 
@@ -96,10 +99,48 @@ enum RecentsStore {
     // dictionary whose deep cast is far too expensive to repeat per keystroke.
     static func allQueryChoices(defaults: UserDefaults = .standard) -> [String: String] {
         if let queryChoicesCache { return queryChoicesCache }
+        migrateKeysIfNeeded(defaults: defaults)
 
         let stored = defaults.dictionary(forKey: queryChoicesKey) as? [String: [String: Any]] ?? [:]
         let flattened = stored.compactMapValues { $0["key"] as? String }
         queryChoicesCache = flattened
         return flattened
+    }
+
+    // MARK: Key scheme migration
+
+    // Rewrites stored keys to the current RecencyKey scheme once, merging
+    // history when several old keys (e.g. "● notes.txt" and "notes.txt")
+    // collapse to the same new one. Persisted, so it runs once per install.
+    static func migrateKeysIfNeeded(defaults: UserDefaults = .standard) {
+        guard defaults.integer(forKey: keyVersionKey) < RecencyKey.version else { return }
+
+        var stored = defaults.dictionary(forKey: activationsKey) as? [String: [TimeInterval]]
+        if stored == nil, let legacy = defaults.dictionary(forKey: legacyKey) as? [String: TimeInterval] {
+            stored = legacy.mapValues { [$0] }
+            defaults.removeObject(forKey: legacyKey)
+        }
+        if let stored {
+            var migrated: [String: [TimeInterval]] = [:]
+            for (key, stamps) in stored {
+                migrated[RecencyKey.migrateV1(key), default: []].append(contentsOf: stamps)
+            }
+            migrated = migrated.mapValues { Array($0.sorted().suffix(maxTimestampsPerKey)) }
+            defaults.set(migrated, forKey: activationsKey)
+        }
+
+        if var choices = defaults.dictionary(forKey: queryChoicesKey) as? [String: [String: Any]] {
+            for (query, choice) in choices {
+                guard let key = choice["key"] as? String else { continue }
+                var updated = choice
+                updated["key"] = RecencyKey.migrateV1(key)
+                choices[query] = updated
+            }
+            defaults.set(choices, forKey: queryChoicesKey)
+        }
+
+        defaults.set(RecencyKey.version, forKey: keyVersionKey)
+        activationsCache = nil
+        queryChoicesCache = nil
     }
 }

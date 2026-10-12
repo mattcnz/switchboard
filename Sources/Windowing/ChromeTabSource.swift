@@ -190,7 +190,7 @@ actor ChromeTabSource: SwitchItemSource {
                     icon: icon,
                     pid: nil,
                     axWindow: nil,
-                    recencyKey: "tab:chrome:\(tid)",
+                    recencyKey: RecencyKey.tab(browser: "chrome", url: url, fallback: "tab:chrome:\(tid)"),
                     subtitle: URL(string: url)?.host,
                     isActiveTab: isActiveTab
                 )

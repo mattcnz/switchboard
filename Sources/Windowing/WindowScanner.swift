@@ -96,6 +96,7 @@ actor WindowScanner: SwitchItemSource {
                 && (minimizedRef as? Bool) == true
 
             let id = "win:\(pid):\(CFHash(window))"
+            let windowID = cgWindowID(for: window)
             items.append(SwitchItem(
                 id: id,
                 kind: .window,
@@ -105,9 +106,11 @@ actor WindowScanner: SwitchItemSource {
                 icon: icon,
                 pid: pid,
                 axWindow: window,
-                recencyKey: "win:\(bundleID ?? appName):\(title)",
+                recencyKey: RecencyKey.window(
+                    bundleID: bundleID, appName: appName, title: title, cgWindowID: windowID
+                ),
                 subtitle: isMinimized ? "Minimized" : nil,
-                cgWindowID: cgWindowID(for: window)
+                cgWindowID: windowID
             ))
         }
         return items

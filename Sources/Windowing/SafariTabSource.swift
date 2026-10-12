@@ -135,7 +135,7 @@ actor SafariTabSource: SwitchItemSource {
                     icon: icon,
                     pid: nil,
                     axWindow: nil,
-                    recencyKey: "tab:safari:\(displayTitle)",
+                    recencyKey: RecencyKey.tab(browser: "safari", url: url, fallback: "tab:safari:\(displayTitle)"),
                     subtitle: URL(string: url)?.host,
                     isActiveTab: isActiveTab
                 )
