@@ -21,6 +21,8 @@ struct SwitchItemCell: View, Equatable {
     let item: SwitchItem
     let cgWindowID: CGWindowID?
     let isSelected: Bool
+    // The live query, so matched title characters can be emphasised.
+    let query: String
     let previewsEnabled: Bool
     let captureWidth: CGFloat
     let provider: WindowThumbnailProvider
@@ -33,6 +35,7 @@ struct SwitchItemCell: View, Equatable {
         lhs.item.id == rhs.item.id
             && lhs.cgWindowID == rhs.cgWindowID
             && lhs.isSelected == rhs.isSelected
+            && lhs.query == rhs.query
             && lhs.previewsEnabled == rhs.previewsEnabled
             && lhs.captureWidth == rhs.captureWidth
     }
@@ -41,7 +44,7 @@ struct SwitchItemCell: View, Equatable {
         VStack(alignment: .leading, spacing: 6) {
             thumbnailBox
             VStack(alignment: .leading, spacing: 1) {
-                Text(item.displayTitle)
+                Text(highlightedTitle)
                     .font(.subheadline)
                     .lineLimit(1)
                     .truncationMode(.tail)
@@ -65,6 +68,23 @@ struct SwitchItemCell: View, Equatable {
                 for: cgWindowID, width: captureWidth, priority: isSelected
             )
         }
+    }
+
+    private var highlightedTitle: AttributedString {
+        let title = item.displayTitle
+        var attributed = AttributedString(title)
+        let offsets = FuzzySearch.highlightOffsets(in: title, query: query)
+        guard !offsets.isEmpty else { return attributed }
+        var index = attributed.startIndex
+        for offset in 0..<title.count {
+            let next = attributed.characters.index(after: index)
+            if offsets.contains(offset) {
+                attributed[index..<next].inlinePresentationIntent = .stronglyEmphasized
+                attributed[index..<next].foregroundColor = .accentColor
+            }
+            index = next
+        }
+        return attributed
     }
 
     // Re-request when the window changes, when this cell becomes selected

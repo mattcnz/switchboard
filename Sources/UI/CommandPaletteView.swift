@@ -327,6 +327,7 @@ struct CommandPaletteView: View {
                                 item: item,
                                 cgWindowID: viewModel.thumbnailIDs[item.id],
                                 isSelected: item.id == viewModel.selectedItemID,
+                                query: viewModel.query,
                                 previewsEnabled: previewsEnabled,
                                 captureWidth: metrics.thumbnailWidth,
                                 provider: thumbnailProvider

@@ -8,6 +8,8 @@ struct PreparedItem {
     let fullText: String
     let bundleID: String
     let terms: [String]
+    // fullText as bytes (normalize() output is pure ASCII) for fuzzyMatch.
+    let bytes: [UInt8]
     let contentHash: Int
 }
 
@@ -42,6 +44,7 @@ final class SearchIndex {
                 fullText: fullText,
                 bundleID: bundleID,
                 terms: fullText.split(separator: " ").map(String.init),
+                bytes: Array(fullText.utf8),
                 contentHash: hash
             )
             cache[item.id] = entry

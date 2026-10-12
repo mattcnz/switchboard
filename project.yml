@@ -48,3 +48,28 @@ targets:
         CODE_SIGNING_REQUIRED: 'NO'
         CODE_SIGN_IDENTITY: ''
         PRODUCT_BUNDLE_IDENTIFIER: com.mattmilliken.switchboard
+
+  # Hostless unit tests: compiles the pure search/ranking code straight into
+  # the bundle, so `make test` never launches the app or touches TCC grants.
+  SwitchboardTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - Tests
+      - Sources/Search
+    settings:
+      base:
+        SWIFT_VERSION: '5.0'
+        MACOSX_DEPLOYMENT_TARGET: '14.0'
+        CODE_SIGNING_REQUIRED: 'NO'
+        CODE_SIGN_IDENTITY: '-'
+        GENERATE_INFOPLIST_FILE: 'YES'
+
+schemes:
+  Switchboard:
+    build:
+      targets:
+        Switchboard: all
+    test:
+      targets:
+        - SwitchboardTests

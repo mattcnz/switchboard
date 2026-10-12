@@ -12,7 +12,7 @@ DMG = build-release/Switchboard.dmg
 DEV_ID = Developer ID Application: Matthew Milliken (MM267F63K8)
 NOTARY_PROFILE = switchboard-notary
 
-.PHONY: generate build run logs release notarize dmg
+.PHONY: generate build run test logs release notarize dmg
 
 generate:
 	xcodegen generate
@@ -26,6 +26,10 @@ run: build
 	-pkill -x Switchboard
 	sleep 0.5
 	open $(APP)
+
+test: generate
+	xcodebuild -project Switchboard.xcodeproj -scheme Switchboard \
+	  -derivedDataPath build test
 
 logs:
 	log stream --predicate 'subsystem == "com.mattmilliken.switchboard"' --level debug
