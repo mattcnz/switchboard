@@ -158,11 +158,26 @@ final class AppCoordinator: NSObject {
     }
 
     @objc private func openSettingsFromMenu() {
-        NSApp.activate(ignoringOtherApps: true)
+        let existingWindowNumbers = Set(NSApp.windows.map(\.windowNumber))
         let opened = NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
-        if !opened {
+        guard opened else {
             // Fallback: the onboarding window carries a SettingsLink.
             showOnboarding()
+            return
+        }
+
+        // SwiftUI creates or reveals the Settings window after the action is
+        // dispatched. Wait a turn, then explicitly front that window: an
+        // LSUIElement menu-bar app does not get normal Dock-app ordering.
+        DispatchQueue.main.async {
+            let settingsWindow = NSApp.windows.first {
+                !existingWindowNumbers.contains($0.windowNumber) && $0.isVisible
+            } ?? NSApp.windows.first {
+                $0.title.localizedCaseInsensitiveContains("settings")
+            }
+
+            NSApp.activate(ignoringOtherApps: true)
+            settingsWindow?.makeKeyAndOrderFront(nil)
         }
     }
 
