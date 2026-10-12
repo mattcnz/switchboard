@@ -76,7 +76,7 @@ actor ChromeTabSource: SwitchItemSource {
         """
 
         var err: NSDictionary?
-        let result = NSAppleScript(source: script)?.executeAndReturnError(&err)
+        let result = AppleScriptRunner.run(script, error: &err)
         if let err {
             logger.error("Chrome activation failed: \(String(describing: err), privacy: .public)")
             return false
@@ -126,8 +126,7 @@ actor ChromeTabSource: SwitchItemSource {
     // control Google Chrome" dialog appears clearly before the palette opens.
     static func requestAutomationPermission() {
         var err: NSDictionary?
-        NSAppleScript(source: "tell application \"Google Chrome\" to return name")?
-            .executeAndReturnError(&err)
+        AppleScriptRunner.run("if application \"Google Chrome\" is running then tell application \"Google Chrome\" to return name", error: &err)
     }
 
     // MARK: Private
@@ -140,15 +139,18 @@ actor ChromeTabSource: SwitchItemSource {
             set rs to (ASCII character 30)
             set us to (ASCII character 31)
             set output to ""
+            -- Whole-window list reads: one Apple Event per property per
+            -- window, instead of three round-trips per tab.
             repeat with w in windows
                 try
                     set wid to id of w
                     set activeIdx to active tab index of w
-                    set tabCount to count of tabs of w
-                    repeat with tabIndex from 1 to tabCount
-                        set t to tab tabIndex of w
+                    set idList to id of every tab of w
+                    set titleList to title of every tab of w
+                    set urlList to URL of every tab of w
+                    repeat with tabIndex from 1 to count of idList
                         try
-                            set output to output & wid & us & tabIndex & us & (id of t) & us & (title of t) & us & (URL of t) & us & ((tabIndex is activeIdx) as text) & rs
+                            set output to output & wid & us & tabIndex & us & (item tabIndex of idList) & us & (item tabIndex of titleList) & us & (item tabIndex of urlList) & us & ((tabIndex is activeIdx) as text) & rs
                         end try
                     end repeat
                 end try
@@ -157,7 +159,7 @@ actor ChromeTabSource: SwitchItemSource {
         end tell
         """
         var err: NSDictionary?
-        let result = NSAppleScript(source: script)?.executeAndReturnError(&err)
+        let result = AppleScriptRunner.run(script, error: &err)
         guard err == nil, let raw = result?.stringValue else {
             cache = []
             return

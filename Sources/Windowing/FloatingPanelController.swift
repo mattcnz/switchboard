@@ -35,6 +35,9 @@ private enum PanelSizeStore {
 @MainActor
 final class FloatingPanelController {
     private var panel: FloatingPanel?
+    // Per-panel block observers; removed in hide() so reopening doesn't
+    // accumulate one pair per palette open.
+    private var panelObservers: [NSObjectProtocol] = []
     private let sourceProvider: () -> [any SwitchItemSource]
     private let activator: WindowActivator
     private let thumbnailProvider: WindowThumbnailProvider
@@ -119,7 +122,7 @@ final class FloatingPanelController {
         panel.makeKeyAndOrderFront(nil)
         self.panel = panel
 
-        NotificationCenter.default.addObserver(
+        panelObservers.append(NotificationCenter.default.addObserver(
             forName: NSWindow.didResignKeyNotification,
             object: panel,
             queue: .main
@@ -127,11 +130,11 @@ final class FloatingPanelController {
             Task { @MainActor [weak self] in
                 self?.hide()
             }
-        }
+        })
 
         // Only on drag-resize completion, not continuously mid-drag — firing
         // a recapture on every intermediate frame would hammer ScreenCaptureKit.
-        NotificationCenter.default.addObserver(
+        panelObservers.append(NotificationCenter.default.addObserver(
             forName: NSWindow.didEndLiveResizeNotification,
             object: panel,
             queue: .main
@@ -142,7 +145,7 @@ final class FloatingPanelController {
                 PanelSizeStore.save(newSize)
                 metrics.thumbnailWidth = PaletteLayout.thumbnailWidth(forPanelWidth: newSize.width)
             }
-        }
+        })
 
         Task {
             await viewModel.loadItems()
@@ -150,6 +153,8 @@ final class FloatingPanelController {
     }
 
     func hide() {
+        panelObservers.forEach(NotificationCenter.default.removeObserver)
+        panelObservers.removeAll()
         panel?.close()
         panel = nil
         let provider = thumbnailProvider

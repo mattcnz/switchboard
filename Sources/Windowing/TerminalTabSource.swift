@@ -68,7 +68,7 @@ actor TerminalTabSource: SwitchItemSource {
         """
 
         var err: NSDictionary?
-        let result = NSAppleScript(source: script)?.executeAndReturnError(&err)
+        let result = AppleScriptRunner.run(script, error: &err)
         if let err {
             logger.error("Terminal activation failed: \(String(describing: err), privacy: .public)")
             return false
@@ -87,8 +87,7 @@ actor TerminalTabSource: SwitchItemSource {
 
     static func requestAutomationPermission() {
         var err: NSDictionary?
-        NSAppleScript(source: "if application \"Terminal\" is running then tell application \"Terminal\" to return name")?
-            .executeAndReturnError(&err)
+        AppleScriptRunner.run("if application \"Terminal\" is running then tell application \"Terminal\" to return name", error: &err)
     }
 
     private func fetchAndCache() async {
@@ -134,7 +133,7 @@ actor TerminalTabSource: SwitchItemSource {
         """
 
         var err: NSDictionary?
-        let result = NSAppleScript(source: script)?.executeAndReturnError(&err)
+        let result = AppleScriptRunner.run(script, error: &err)
         guard err == nil, let raw = result?.stringValue else {
             logger.error("Terminal AppleScript failed: \(String(describing: err), privacy: .public)")
             cache = []

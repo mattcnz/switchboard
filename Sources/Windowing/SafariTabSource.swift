@@ -49,7 +49,7 @@ actor SafariTabSource: SwitchItemSource {
         """
 
         var err: NSDictionary?
-        let result = NSAppleScript(source: script)?.executeAndReturnError(&err)
+        let result = AppleScriptRunner.run(script, error: &err)
         if let err {
             logger.error("Safari activation failed: \(String(describing: err), privacy: .public)")
             return false
@@ -63,8 +63,7 @@ actor SafariTabSource: SwitchItemSource {
 
     static func requestAutomationPermission() {
         var err: NSDictionary?
-        NSAppleScript(source: "if application \"Safari\" is running then tell application \"Safari\" to return name")?
-            .executeAndReturnError(&err)
+        AppleScriptRunner.run("if application \"Safari\" is running then tell application \"Safari\" to return name", error: &err)
     }
 
     private func fetchAndCache() async {
@@ -101,7 +100,7 @@ actor SafariTabSource: SwitchItemSource {
         """
 
         var err: NSDictionary?
-        let result = NSAppleScript(source: script)?.executeAndReturnError(&err)
+        let result = AppleScriptRunner.run(script, error: &err)
         guard err == nil, let raw = result?.stringValue else {
             logger.error("Safari AppleScript failed: \(String(describing: err), privacy: .public)")
             cache = []
