@@ -72,7 +72,7 @@ actor WindowScanner: SwitchItemSource {
     private nonisolated static func scanApp(_ app: NSRunningApplication) -> [SwitchItem] {
         let pid = app.processIdentifier
         let axApp = AXUIElementCreateApplication(pid)
-        let windows = windows(for: axApp)
+        let windows = switchableWindows(windows(for: axApp))
         guard !windows.isEmpty else { return [] }
 
         let icon = app.icon
@@ -114,6 +114,28 @@ actor WindowScanner: SwitchItemSource {
             ))
         }
         return items
+    }
+
+    // Apps list popups as AX windows too — Chrome's find bar and "Open this
+    // app?" prompts come through as AXUnknown, and helper surfaces (Finder's
+    // desktop) have no subrole at all. They aren't destinations, and their
+    // previews render as tiny captures. Keep real windows and dialogs; but
+    // if that would leave an app with nothing, fall back to its AXUnknown
+    // windows, since a few apps (some Java/game launchers) report their only
+    // real window that way.
+    private static let switchableSubroles: Set<String> = [
+        kAXStandardWindowSubrole as String, kAXDialogSubrole as String, kAXSystemDialogSubrole as String,
+    ]
+
+    private nonisolated static func switchableWindows(_ windows: [AXUIElement]) -> [AXUIElement] {
+        let subroles = windows.map { window -> String? in
+            var ref: CFTypeRef?
+            guard AXUIElementCopyAttributeValue(window, kAXSubroleAttribute as CFString, &ref) == .success else { return nil }
+            return ref as? String
+        }
+        let kept = zip(windows, subroles).filter { switchableSubroles.contains($0.1 ?? "") }.map(\.0)
+        if !kept.isEmpty { return kept }
+        return zip(windows, subroles).filter { $0.1 == kAXUnknownSubrole as String }.map(\.0)
     }
 
     private nonisolated static func windows(for app: AXUIElement) -> [AXUIElement] {
